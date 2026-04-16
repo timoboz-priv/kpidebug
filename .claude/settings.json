@@ -1,0 +1,13 @@
+{
+  "env": {
+    "CLAUDE_CODE_USE_VERTEX": "1",
+    "CLOUD_ML_REGION": "global",
+    "ANTHROPIC_VERTEX_PROJECT_ID": "cg-vertexai",
+    "ANTHROPIC_MODEL": "claude-opus-4-6[1m]",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5@20251001",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
+  },
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
+  }
+}

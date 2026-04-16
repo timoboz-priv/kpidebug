@@ -1,0 +1,125 @@
+import React from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Box,
+  Drawer,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Typography,
+  Avatar,
+  Divider,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
+import {
+  Dashboard as DashboardIcon,
+  Settings as SettingsIcon,
+  Logout as LogoutIcon,
+  BugReport as BugReportIcon,
+} from "@mui/icons-material";
+import { useUser } from "../contexts/UserContext";
+import ProjectChooser from "../components/ProjectChooser";
+
+const SIDEBAR_WIDTH = 260;
+
+const navItems = [
+  { label: "Dashboard", icon: <DashboardIcon />, path: "/" },
+  { label: "Project Settings", icon: <SettingsIcon />, path: "/settings" },
+];
+
+export default function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useUser();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
+
+  return (
+    <Drawer
+      variant="permanent"
+      sx={{
+        width: SIDEBAR_WIDTH,
+        flexShrink: 0,
+        "& .MuiDrawer-paper": {
+          width: SIDEBAR_WIDTH,
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
+    >
+      {/* Logo */}
+      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
+        <BugReportIcon sx={{ color: "primary.main", fontSize: 28 }} />
+        <Typography variant="h6" color="primary" sx={{ fontWeight: 700 }}>
+          KPI Debug
+        </Typography>
+      </Box>
+
+      <Divider />
+
+      {/* Project chooser */}
+      <Box sx={{ px: 1, py: 1.5 }}>
+        <ProjectChooser />
+      </Box>
+
+      <Divider />
+
+      {/* Navigation */}
+      <List sx={{ flex: 1, px: 1, py: 1 }}>
+        {navItems.map((item) => (
+          <ListItemButton
+            key={item.path}
+            selected={location.pathname === item.path}
+            onClick={() => navigate(item.path)}
+            sx={{
+              borderRadius: 1,
+              mb: 0.5,
+              "&.Mui-selected": {
+                bgcolor: "primary.main",
+                color: "white",
+                "&:hover": { bgcolor: "primary.dark" },
+                "& .MuiListItemIcon-root": { color: "white" },
+              },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.label} />
+          </ListItemButton>
+        ))}
+      </List>
+
+      <Divider />
+
+      {/* User card */}
+      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Avatar
+          src={user?.avatar_url || undefined}
+          sx={{ width: 36, height: 36, bgcolor: "primary.light", fontSize: 14 }}
+        >
+          {user?.name?.charAt(0)?.toUpperCase() || "?"}
+        </Avatar>
+        <Box sx={{ flex: 1, overflow: "hidden" }}>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+            {user?.name || "User"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {user?.email || ""}
+          </Typography>
+        </Box>
+        <Tooltip title="Sign out">
+          <IconButton size="small" onClick={handleLogout}>
+            <LogoutIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Drawer>
+  );
+}
+
+export { SIDEBAR_WIDTH };

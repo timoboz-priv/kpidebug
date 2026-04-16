@@ -73,20 +73,7 @@ export default function ProjectSettingsPage() {
     }
   };
 
-  if (!currentProject) {
-    return (
-      <Box>
-        <Typography variant="h4" gutterBottom>
-          Project Settings
-        </Typography>
-        <Card>
-          <CardContent>
-            <Typography color="text.secondary">Select a project first.</Typography>
-          </CardContent>
-        </Card>
-      </Box>
-    );
-  }
+  if (!currentProject) return null;
 
   const roleColor = (role: Role): "default" | "primary" | "error" => {
     switch (role) {

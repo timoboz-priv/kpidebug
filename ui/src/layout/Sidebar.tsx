@@ -17,7 +17,7 @@ import {
   Dashboard as DashboardIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
-  BugReport as BugReportIcon,
+  AutoGraph as AutoGraphIcon,
 } from "@mui/icons-material";
 import { useUser } from "../contexts/UserContext";
 import ProjectChooser from "../components/ProjectChooser";
@@ -55,7 +55,7 @@ export default function Sidebar() {
     >
       {/* Logo */}
       <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
-        <BugReportIcon sx={{ color: "primary.main", fontSize: 28 }} />
+        <AutoGraphIcon sx={{ color: "primary.main", fontSize: 28 }} />
         <Typography variant="h6" color="primary" sx={{ fontWeight: 700 }}>
           KPI Debug
         </Typography>

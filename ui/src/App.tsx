@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ThemeProvider, CssBaseline } from "@mui/material";
+import { ThemeProvider, CssBaseline, Box, CircularProgress } from "@mui/material";
 import theme from "./theme";
 import { UserProvider, useUser } from "./contexts/UserContext";
 import { ProjectProvider } from "./contexts/ProjectContext";
@@ -10,10 +10,26 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 
+function FullScreenLoader() {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+        bgcolor: "background.default",
+      }}
+    >
+      <CircularProgress />
+    </Box>
+  );
+}
+
 function AppRoutes() {
   const { firebaseUser, loading } = useUser();
 
-  if (loading) return null;
+  if (loading) return <FullScreenLoader />;
 
   return (
     <Routes>

@@ -17,6 +17,7 @@ causes, and tells you what to fix.
 The following folders are relevant
 - `kpidebug/common`: Common utilities and types
 - `kpidebug/data`: Raw data sources and integrations
+  - `kpidebug/data/stripe`: Stripe data source
 - `kpidebug/metrics`: Metrics engine
 - `ui`: Frontend
   - `ui/src/api`: API client and types

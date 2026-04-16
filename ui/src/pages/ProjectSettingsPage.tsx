@@ -23,6 +23,7 @@ import { useProject } from "../contexts/ProjectContext";
 import { useUser } from "../contexts/UserContext";
 import { ProjectMember, Role, listMembers, updateMemberRole, removeMember } from "../api/projects";
 import AddUserToProjectDialog from "../components/AddUserToProjectDialog";
+import DataSourcesSection from "../components/DataSourcesSection";
 
 export default function ProjectSettingsPage() {
   const { currentProject } = useProject();
@@ -186,6 +187,15 @@ export default function ProjectSettingsPage() {
         projectId={currentProject.id}
         onMemberAdded={fetchMembers}
       />
+
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Data Sources
+          </Typography>
+          <DataSourcesSection projectId={currentProject.id} />
+        </CardContent>
+      </Card>
     </Box>
   );
 }

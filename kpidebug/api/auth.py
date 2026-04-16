@@ -11,6 +11,10 @@ from kpidebug.management.user_store import AbstractUserStore
 from kpidebug.management.user_store_firestore import FirestoreUserStore
 from kpidebug.management.project_store import AbstractProjectStore
 from kpidebug.management.project_store_firestore import FirestoreProjectStore
+from kpidebug.data.data_store import AbstractDataStore
+from kpidebug.data.data_store_firestore import FirestoreDataStore
+from kpidebug.metrics.metric_store import AbstractMetricStore
+from kpidebug.metrics.metric_store_firestore import FirestoreMetricStore
 
 _firebase_app: firebase_admin.App | None = None
 
@@ -75,6 +79,43 @@ def get_user_store() -> AbstractUserStore:
 
 def get_project_store() -> AbstractProjectStore:
     return FirestoreProjectStore(get_firestore_client())
+
+
+def get_data_store() -> AbstractDataStore:
+    return FirestoreDataStore(get_firestore_client())
+
+
+def get_metric_store() -> AbstractMetricStore:
+    return FirestoreMetricStore(get_firestore_client())
+
+
+def get_table_cache():
+    from kpidebug.config import config
+    from kpidebug.data.cache.base import TableCache
+
+    if not config.cache_enabled:
+        return None
+
+    if config.cache_backend == "firestore":
+        from kpidebug.data.cache.firestore import (
+            FirestoreTableCache,
+        )
+        return FirestoreTableCache(get_firestore_client())
+    else:
+        return _get_memory_cache()
+
+
+_memory_cache_instance = None
+
+
+def _get_memory_cache():
+    global _memory_cache_instance
+    if _memory_cache_instance is None:
+        from kpidebug.data.cache.memory import (
+            InMemoryTableCache,
+        )
+        _memory_cache_instance = InMemoryTableCache()
+    return _memory_cache_instance
 
 
 def get_current_user(

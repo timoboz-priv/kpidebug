@@ -8,6 +8,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./layout/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
+import MetricExplorerPage from "./pages/MetricExplorerPage";
+import DataTablesPage from "./pages/DataTablesPage";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 
 function FullScreenLoader() {
@@ -47,6 +49,8 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/metrics" element={<MetricExplorerPage />} />
+        <Route path="/data" element={<DataTablesPage />} />
         <Route path="/settings" element={<ProjectSettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

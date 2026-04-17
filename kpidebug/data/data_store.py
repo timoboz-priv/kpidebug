@@ -8,6 +8,7 @@ class AbstractDataStore(ABC):
     def create_source(
         self, project_id: str, name: str,
         source_type: DataSourceType, dimensions: list[Dimension],
+        credentials: dict[str, str] | None = None,
     ) -> DataSource:
         ...
 
@@ -24,20 +25,5 @@ class AbstractDataStore(ABC):
         ...
 
     @abstractmethod
-    def store_credentials(
-        self, project_id: str, source_id: str,
-        credentials: dict[str, str],
-    ) -> None:
-        ...
-
-    @abstractmethod
-    def get_credentials(
-        self, project_id: str, source_id: str,
-    ) -> dict[str, str] | None:
-        ...
-
-    @abstractmethod
-    def delete_credentials(
-        self, project_id: str, source_id: str,
-    ) -> None:
+    def update_source(self, project_id: str, source_id: str, updates: dict) -> DataSource:
         ...

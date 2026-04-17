@@ -27,5 +27,12 @@ class Config:
         "CACHE_TTL_SECONDS", "300"
     ))
 
+    store_backend: str = os.getenv(
+        "STORE_BACKEND", "firestore"
+    )
+    database_url: str = os.getenv(
+        "DATABASE_URL", ""
+    )
+
 
 config = Config()

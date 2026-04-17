@@ -91,10 +91,7 @@ def connect_data_source(
         name=body.name,
         source_type=source_type,
         dimensions=dimensions,
-    )
-
-    data_store.store_credentials(
-        project_id, source.id, body.credentials
+        credentials=body.credentials,
     )
 
     return source
@@ -114,7 +111,6 @@ def disconnect_data_source(
         raise HTTPException(
             status_code=404, detail="Data source not found"
         )
-    data_store.delete_credentials(project_id, source_id)
     data_store.delete_source(project_id, source_id)
     return {"ok": True}
 

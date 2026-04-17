@@ -4,5 +4,6 @@ firebase-admin>=6.6.0
 python-dotenv>=1.1.0
 dataclasses-json>=0.6.7
 stripe>=15.0.0
+psycopg[binary,pool]>=3.2.0
 pytest>=8.3.0
 httpx>=0.28.0

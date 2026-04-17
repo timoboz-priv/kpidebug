@@ -26,6 +26,14 @@ class TestFirestoreDataStore:
         assert source.type == DataSourceType.STRIPE
         assert len(source.dimensions) == 2
 
+    def test_create_source_with_credentials(self):
+        store, db = self._make_store()
+        source = store.create_source(
+            "p1", "Stripe", DataSourceType.STRIPE, [],
+            credentials={"api_key": "sk_test"},
+        )
+        assert source.credentials == {"api_key": "sk_test"}
+
     def test_get_source_returns_source(self):
         store, db = self._make_store()
         doc = MagicMock()
@@ -35,6 +43,7 @@ class TestFirestoreDataStore:
             "name": "Stripe Prod",
             "type": "stripe",
             "dimensions": [{"name": "time", "type": "temporal"}],
+            "credentials": {"api_key": "sk_test"},
         }
         db.collection.return_value.document.return_value \
             .collection.return_value.document.return_value \
@@ -44,6 +53,7 @@ class TestFirestoreDataStore:
         assert source is not None
         assert source.id == "s1"
         assert source.type == DataSourceType.STRIPE
+        assert source.credentials == {"api_key": "sk_test"}
 
     def test_get_source_returns_none(self):
         store, db = self._make_store()
@@ -59,32 +69,6 @@ class TestFirestoreDataStore:
     def test_delete_source(self):
         store, db = self._make_store()
         store.delete_source("p1", "s1")
-        db.collection.return_value.document.return_value \
-            .collection.return_value.document.return_value \
-            .delete.assert_called_once()
-
-    def test_store_credentials(self):
-        store, db = self._make_store()
-        store.store_credentials("p1", "s1", {"api_key": "sk_test"})
-        db.collection.return_value.document.return_value \
-            .collection.return_value.document.return_value \
-            .set.assert_called_once()
-
-    def test_get_credentials(self):
-        store, db = self._make_store()
-        doc = MagicMock()
-        doc.exists = True
-        doc.to_dict.return_value = {"api_key": "sk_test"}
-        db.collection.return_value.document.return_value \
-            .collection.return_value.document.return_value \
-            .get.return_value = doc
-
-        result = store.get_credentials("p1", "s1")
-        assert result == {"api_key": "sk_test"}
-
-    def test_delete_credentials(self):
-        store, db = self._make_store()
-        store.delete_credentials("p1", "s1")
         db.collection.return_value.document.return_value \
             .collection.return_value.document.return_value \
             .delete.assert_called_once()

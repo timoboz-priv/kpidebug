@@ -13,7 +13,6 @@ from kpidebug.data.data_store import AbstractDataStore
 
 class FirestoreDataStore(AbstractDataStore):
     SOURCES_COLLECTION = "data_sources"
-    CREDENTIALS_COLLECTION = "data_source_credentials"
 
     def __init__(self, db: FirestoreClient):
         self.db = db
@@ -25,6 +24,7 @@ class FirestoreDataStore(AbstractDataStore):
         self, project_id: str, name: str,
         source_type: DataSourceType,
         dimensions: list[Dimension],
+        credentials: dict[str, str] | None = None,
     ) -> DataSource:
         source_id = str(uuid.uuid4())
         col = self._project_ref(project_id).collection(
@@ -37,6 +37,7 @@ class FirestoreDataStore(AbstractDataStore):
                 {"name": d.name, "type": d.type.value}
                 for d in dimensions
             ],
+            "credentials": credentials or {},
         })
         return DataSource(
             id=source_id,
@@ -44,6 +45,7 @@ class FirestoreDataStore(AbstractDataStore):
             name=name,
             type=source_type,
             dimensions=dimensions,
+            credentials=credentials or {},
         )
 
     def get_source(
@@ -79,33 +81,11 @@ class FirestoreDataStore(AbstractDataStore):
             self.SOURCES_COLLECTION
         ).document(source_id).delete()
 
-    def store_credentials(
-        self, project_id: str, source_id: str,
-        credentials: dict[str, str],
-    ) -> None:
+    def update_source(self, project_id: str, source_id: str, updates: dict) -> DataSource:
         self._project_ref(project_id).collection(
-            self.CREDENTIALS_COLLECTION
-        ).document(source_id).set(credentials)
-
-    def get_credentials(
-        self, project_id: str, source_id: str,
-    ) -> dict[str, str] | None:
-        doc = (
-            self._project_ref(project_id)
-            .collection(self.CREDENTIALS_COLLECTION)
-            .document(source_id)
-            .get()
-        )
-        if not doc.exists:
-            return None
-        return doc.to_dict()
-
-    def delete_credentials(
-        self, project_id: str, source_id: str,
-    ) -> None:
-        self._project_ref(project_id).collection(
-            self.CREDENTIALS_COLLECTION
-        ).document(source_id).delete()
+            self.SOURCES_COLLECTION
+        ).document(source_id).update(updates)
+        return self.get_source(project_id, source_id)
 
     def _doc_to_source(
         self, doc, project_id: str,
@@ -126,4 +106,5 @@ class FirestoreDataStore(AbstractDataStore):
                 data.get("type", DataSourceType.CUSTOM)
             ),
             dimensions=dimensions,
+            credentials=data.get("credentials", {}),
         )

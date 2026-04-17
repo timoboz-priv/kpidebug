@@ -54,8 +54,8 @@ def _mock_data_store() -> MagicMock:
         id="s1", project_id="p1",
         name="Stripe Prod",
         type=DataSourceType.STRIPE,
+        credentials={"api_key": "sk_test_123"},
     )
-    store.get_credentials.return_value = {"api_key": "sk_test_123"}
     return store
 
 
@@ -95,7 +95,6 @@ class TestDataSourceRoutes:
         )
         assert response.status_code == 200
         self.data_store.create_source.assert_called_once()
-        self.data_store.store_credentials.assert_called_once()
 
     def test_disconnect_source(self):
         response = self.client.delete(

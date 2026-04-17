@@ -110,10 +110,8 @@ def explore_metric(
             detail=f"No connector for: {source.type.value}",
         )
 
-    credentials = data_store.get_credentials(
-        project_id, body.source_id
-    )
-    if credentials is None:
+    credentials = source.credentials
+    if not credentials:
         raise HTTPException(
             status_code=400,
             detail="No credentials for this source",

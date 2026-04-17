@@ -40,6 +40,7 @@ class DataSource:
     name: str = ""
     type: DataSourceType = DataSourceType.CUSTOM
     dimensions: list[Dimension] = dataclass_field(default_factory=list)
+    credentials: dict[str, str] = dataclass_field(default_factory=dict)
 
 
 @dataclass_json

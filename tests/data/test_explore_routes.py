@@ -68,8 +68,8 @@ class TestMetricExploreEndpoint:
         self.data_store.get_source.return_value = DataSource(
             id="s1", project_id="p1", name="Stripe",
             type=DataSourceType.STRIPE,
+            credentials={"api_key": "sk_test"},
         )
-        self.data_store.get_credentials.return_value = {"api_key": "sk_test"}
         app.dependency_overrides[get_current_user] = lambda: _mock_user()
         app.dependency_overrides[get_data_store] = lambda: self.data_store
         app.dependency_overrides[get_project_store] = lambda: _mock_project_store()

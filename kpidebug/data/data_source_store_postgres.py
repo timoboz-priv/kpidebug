@@ -132,8 +132,13 @@ class PostgresDataSourceStore(DataSourceStore):
                 params.append(f"%{f.value}%")
             elif f.operator in ("gt", "gte", "lt", "lte"):
                 sql_op = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}[f.operator]
-                where += f" AND ({col_ref})::numeric {sql_op} %s"
-                params.append(float(f.value))
+                try:
+                    numeric_val = float(f.value)
+                    where += f" AND ({col_ref})::numeric {sql_op} %s"
+                    params.append(numeric_val)
+                except ValueError:
+                    where += f" AND {col_ref} {sql_op} %s"
+                    params.append(f.value)
 
         with self.pool.connection() as conn:
             count_row = conn.execute(

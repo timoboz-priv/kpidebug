@@ -116,6 +116,8 @@ export default function AppLayout() {
           component="main"
           sx={{
             flexGrow: 1,
+            minWidth: 0,
+            overflow: "hidden",
             bgcolor: "background.default",
             minHeight: "100vh",
           }}

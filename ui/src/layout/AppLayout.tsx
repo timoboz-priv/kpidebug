@@ -116,10 +116,8 @@ export default function AppLayout() {
           component="main"
           sx={{
             flexGrow: 1,
-            p: 3,
             bgcolor: "background.default",
             minHeight: "100vh",
-            ml: `${SIDEBAR_WIDTH}px`,
           }}
         >
           <Outlet />

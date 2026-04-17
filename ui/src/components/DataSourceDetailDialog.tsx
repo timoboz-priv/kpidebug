@@ -19,12 +19,14 @@ import {
   CircularProgress,
   Divider,
 } from "@mui/material";
+import { Sync as SyncIcon } from "@mui/icons-material";
 import {
   DataSource,
-  MetricDescriptor,
+  TableDescriptor,
   connectDataSource,
   disconnectDataSource,
-  discoverMetrics,
+  discoverTables,
+  syncSource,
 } from "../api/dataSources";
 import { AvailableSource } from "./DataSourcesSection";
 
@@ -48,24 +50,25 @@ export default function DataSourceDetailDialog({
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fields, setFields] = useState<MetricDescriptor[]>([]);
-  const [fieldsLoading, setFieldsLoading] = useState(false);
+  const [tables, setTables] = useState<TableDescriptor[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const isConnected = connectedSource !== null;
 
   useEffect(() => {
     if (open && isConnected && connectedSource) {
-      setFieldsLoading(true);
-      discoverMetrics(projectId, connectedSource.id)
-        .then(setFields)
-        .catch(() => setFields([]))
-        .finally(() => setFieldsLoading(false));
+      setTablesLoading(true);
+      discoverTables(projectId, connectedSource.id)
+        .then(setTables)
+        .catch(() => setTables([]))
+        .finally(() => setTablesLoading(false));
     }
     if (!open) {
       setApiKey("");
       setError(null);
-      setFields([]);
+      setTables([]);
     }
   }, [open, isConnected, connectedSource, projectId]);
 
@@ -105,6 +108,19 @@ export default function DataSourceDetailDialog({
     }
   };
 
+  const handleSync = async () => {
+    if (!connectedSource) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      await syncSource(projectId, connectedSource.id);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleClose = () => {
     setApiKey("");
     setError(null);
@@ -139,9 +155,10 @@ export default function DataSourceDetailDialog({
 
         {isConnected ? (
           <ConnectedView
-            fields={fields}
-            fieldsLoading={fieldsLoading}
-            lastSynced=""
+            tables={tables}
+            tablesLoading={tablesLoading}
+            syncing={syncing}
+            onSync={handleSync}
           />
         ) : (
           <ConnectForm
@@ -172,29 +189,42 @@ export default function DataSourceDetailDialog({
 }
 
 function ConnectedView({
-  fields,
-  fieldsLoading,
-  lastSynced,
+  tables,
+  tablesLoading,
+  syncing,
+  onSync,
 }: {
-  fields: MetricDescriptor[];
-  fieldsLoading: boolean;
-  lastSynced: string;
+  tables: TableDescriptor[];
+  tablesLoading: boolean;
+  syncing: boolean;
+  onSync: () => void;
 }) {
   return (
     <Box>
-      {lastSynced && (
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-          Last synced: {new Date(lastSynced).toLocaleString()}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+        <Typography variant="subtitle2">
+          Available Tables
         </Typography>
-      )}
+        <Button
+          size="small"
+          startIcon={
+            <SyncIcon
+              sx={{
+                animation: syncing ? "spin 1s linear infinite" : "none",
+                "@keyframes spin": { "100%": { transform: "rotate(360deg)" } },
+              }}
+            />
+          }
+          onClick={onSync}
+          disabled={syncing}
+        >
+          {syncing ? "Syncing..." : "Sync All"}
+        </Button>
+      </Box>
 
-      <Divider sx={{ my: 1.5 }} />
+      <Divider sx={{ mb: 1.5 }} />
 
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        Available Fields
-      </Typography>
-
-      {fieldsLoading ? (
+      {tablesLoading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
           <CircularProgress size={24} />
         </Box>
@@ -203,36 +233,28 @@ function ConnectedView({
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell>Field</TableCell>
+                <TableCell>Table</TableCell>
                 <TableCell>Description</TableCell>
-                <TableCell>Dimensions</TableCell>
+                <TableCell align="right">Columns</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {fields.map((field) => (
-                <TableRow key={field.key}>
+              {tables.map((table) => (
+                <TableRow key={table.key}>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: "monospace" }}>
-                      {field.key}
+                      {table.key}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {field.description}
+                      {table.description}
                     </Typography>
                   </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                      {field.dimensions.map((d) => (
-                        <Chip
-                          key={d.name}
-                          label={d.name}
-                          size="small"
-                          variant="outlined"
-                          color={d.type === "temporal" ? "primary" : "default"}
-                        />
-                      ))}
-                    </Box>
+                  <TableCell align="right">
+                    <Typography variant="body2" color="text.secondary">
+                      {table.columns.length}
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ))}

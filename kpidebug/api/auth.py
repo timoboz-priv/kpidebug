@@ -3,14 +3,18 @@ from dataclasses import dataclass
 import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
 from fastapi import Depends, Header, HTTPException
-from google.cloud.firestore import Client as FirestoreClient
 
+from kpidebug.common.db import ConnectionPoolManager
 from kpidebug.config import config
 from kpidebug.management.types import Project, ProjectMember, Role, User
 from kpidebug.management.user_store import AbstractUserStore
+from kpidebug.management.user_store_postgres import PostgresUserStore
 from kpidebug.management.project_store import AbstractProjectStore
-from kpidebug.data.data_store import AbstractDataStore
+from kpidebug.management.project_store_postgres import PostgresProjectStore
+from kpidebug.data.data_source_store import DataSourceStore
+from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.metrics.metric_store import AbstractMetricStore
+from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
 
 _firebase_app: firebase_admin.App | None = None
 
@@ -59,82 +63,24 @@ def verify_firebase_token(authorization: str = Header(...)) -> FirebaseUser:
     )
 
 
-_firestore_client: FirestoreClient | None = None
-
-
-def get_firestore_client() -> FirestoreClient:
-    global _firestore_client
-    if _firestore_client is None:
-        _firestore_client = FirestoreClient()
-    return _firestore_client
-
-
-def _get_pool_manager():
-    from kpidebug.common.db import ConnectionPoolManager
+def _get_pool_manager() -> ConnectionPoolManager:
     return ConnectionPoolManager.get_instance()
 
 
 def get_user_store() -> AbstractUserStore:
-    if config.store_backend == "postgres":
-        from kpidebug.management.user_store_postgres import PostgresUserStore
-        return PostgresUserStore(_get_pool_manager())
-    from kpidebug.management.user_store_firestore import FirestoreUserStore
-    return FirestoreUserStore(get_firestore_client())
+    return PostgresUserStore(_get_pool_manager())
 
 
 def get_project_store() -> AbstractProjectStore:
-    if config.store_backend == "postgres":
-        from kpidebug.management.project_store_postgres import PostgresProjectStore
-        return PostgresProjectStore(_get_pool_manager())
-    from kpidebug.management.project_store_firestore import FirestoreProjectStore
-    return FirestoreProjectStore(get_firestore_client())
+    return PostgresProjectStore(_get_pool_manager())
 
 
-def get_data_store() -> AbstractDataStore:
-    if config.store_backend == "postgres":
-        from kpidebug.data.data_store_postgres import PostgresDataStore
-        return PostgresDataStore(_get_pool_manager())
-    from kpidebug.data.data_store_firestore import FirestoreDataStore
-    return FirestoreDataStore(get_firestore_client())
+def get_data_source_store() -> DataSourceStore:
+    return PostgresDataSourceStore(_get_pool_manager())
 
 
 def get_metric_store() -> AbstractMetricStore:
-    if config.store_backend == "postgres":
-        from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
-        return PostgresMetricStore(_get_pool_manager())
-    from kpidebug.metrics.metric_store_firestore import FirestoreMetricStore
-    return FirestoreMetricStore(get_firestore_client())
-
-
-def get_table_cache():
-    from kpidebug.data.cache.base import TableCache
-
-    if not config.cache_enabled:
-        return None
-
-    if config.cache_backend == "postgres":
-        from kpidebug.data.cache.postgres import PostgresTableCache
-        return PostgresTableCache(_get_pool_manager())
-    elif config.cache_backend == "firestore":
-        from kpidebug.data.cache.firestore import (
-            FirestoreTableCache,
-        )
-        return FirestoreTableCache(get_firestore_client())
-    else:
-        return _get_memory_cache()
-
-
-_memory_cache_instance = None
-
-
-def _get_memory_cache():
-    global _memory_cache_instance
-    if _memory_cache_instance is None:
-        from kpidebug.data.cache.memory import (
-            InMemoryTableCache,
-        )
-        _memory_cache_instance = InMemoryTableCache()
-    return _memory_cache_instance
+    return PostgresMetricStore(_get_pool_manager())
 
 
 def get_current_user(

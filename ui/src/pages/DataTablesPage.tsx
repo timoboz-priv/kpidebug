@@ -24,7 +24,6 @@ import {
   TextField,
   IconButton,
   TablePagination,
-  Chip,
   Tooltip,
 } from "@mui/material";
 import {
@@ -46,6 +45,7 @@ import {
   queryTable,
   syncTable,
 } from "../api/dataSources";
+import ColumnChip from "../components/ColumnChip";
 
 const PANEL_WIDTH = 260;
 
@@ -289,14 +289,6 @@ export default function DataTablesPage() {
                     </Typography>
                   </Box>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    {result && (
-                      <Chip
-                        label={result.from_cache ? "Cached" : "Live"}
-                        size="small"
-                        color={result.from_cache ? "default" : "success"}
-                        variant="outlined"
-                      />
-                    )}
                     <Tooltip title="Sync data from source">
                       <IconButton onClick={handleSync} disabled={syncing}>
                         <SyncIcon
@@ -308,6 +300,11 @@ export default function DataTablesPage() {
                       </IconButton>
                     </Tooltip>
                   </Box>
+                </Box>
+                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", mt: 1.5 }}>
+                  {selectedTable.columns.map((col) => (
+                    <ColumnChip key={col.key} column={col} />
+                  ))}
                 </Box>
               </CardContent>
             </Card>

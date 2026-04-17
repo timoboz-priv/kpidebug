@@ -6,7 +6,7 @@ export default function DashboardPage() {
   const { currentProject } = useProject();
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Dashboard
       </Typography>

@@ -17,19 +17,6 @@ class Config:
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "8000"))
 
-    cache_enabled: bool = os.getenv(
-        "CACHE_ENABLED", "false"
-    ).lower() == "true"
-    cache_backend: str = os.getenv(
-        "CACHE_BACKEND", "memory"
-    )
-    cache_ttl_seconds: int = int(os.getenv(
-        "CACHE_TTL_SECONDS", "300"
-    ))
-
-    store_backend: str = os.getenv(
-        "STORE_BACKEND", "firestore"
-    )
     database_url: str = os.getenv(
         "DATABASE_URL", ""
     )

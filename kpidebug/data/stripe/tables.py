@@ -1,4 +1,4 @@
-from kpidebug.data.connector import (
+from kpidebug.data.types import (
     ColumnType,
     TableColumn,
     TableDescriptor,

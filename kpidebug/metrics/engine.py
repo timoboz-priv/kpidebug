@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from kpidebug.data.types import DataRecord, DimensionValue
+from kpidebug.metrics.types import DataRecord, DimensionValue
 from kpidebug.metrics.types import MetricDefinition, MetricResult, MetricSource
 from kpidebug.metrics.registry import registry
 from kpidebug.metrics.computation import evaluate

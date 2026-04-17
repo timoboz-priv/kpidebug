@@ -13,23 +13,58 @@ class DataSourceType(str, Enum):
     CUSTOM = "custom"
 
 
-class DimensionType(str, Enum):
-    TEMPORAL = "temporal"
-    CATEGORICAL = "categorical"
+class ColumnType(str, Enum):
+    STRING = "string"
+    NUMBER = "number"
+    CURRENCY = "currency"
+    DATETIME = "datetime"
+    BOOLEAN = "boolean"
 
 
 @dataclass_json
 @dataclass
-class Dimension:
+class TableColumn:
+    key: str = ""
     name: str = ""
-    type: DimensionType = DimensionType.CATEGORICAL
+    description: str = ""
+    type: ColumnType = ColumnType.STRING
+    is_primary_key: bool = False
 
 
 @dataclass_json
-@dataclass(frozen=True)
-class DimensionValue:
-    dimension: str = ""
+@dataclass
+class TableDescriptor:
+    key: str = ""
+    name: str = ""
+    description: str = ""
+    columns: list[TableColumn] = dataclass_field(
+        default_factory=list
+    )
+
+
+@dataclass_json
+@dataclass
+class TableFilter:
+    column: str = ""
+    operator: str = "eq"
     value: str = ""
+
+
+@dataclass_json
+@dataclass
+class TableQuery:
+    filters: list[TableFilter] = dataclass_field(default_factory=list)
+    sort_by: str | None = None
+    sort_order: str = "asc"
+    limit: int = 100
+    offset: int = 0
+
+
+@dataclass_json
+@dataclass
+class TableResult:
+    rows: list[dict] = dataclass_field(default_factory=list)
+    total_count: int = 0
 
 
 @dataclass_json
@@ -39,16 +74,4 @@ class DataSource:
     project_id: str = ""
     name: str = ""
     type: DataSourceType = DataSourceType.CUSTOM
-    dimensions: list[Dimension] = dataclass_field(default_factory=list)
     credentials: dict[str, str] = dataclass_field(default_factory=dict)
-
-
-@dataclass_json
-@dataclass
-class DataRecord:
-    """Internal type for metric aggregation. Not persisted."""
-    source_type: DataSourceType = DataSourceType.CUSTOM
-    field: str = ""
-    value: float = 0.0
-    timestamp: str = ""
-    dimension_values: list[DimensionValue] = dataclass_field(default_factory=list)

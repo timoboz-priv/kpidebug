@@ -17,5 +17,9 @@ class AbstractUserStore(ABC):
         ...
 
     @abstractmethod
+    def get_by_email(self, email: str) -> User | None:
+        ...
+
+    @abstractmethod
     def get_or_create(self, user_id: str, email: str | None, name: str | None, avatar_url: str | None) -> User:
         ...

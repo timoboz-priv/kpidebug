@@ -4,18 +4,18 @@ from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
 
 from kpidebug.api.auth import (
-    get_data_store,
+    get_data_source_store,
     require_project_role,
 )
+from kpidebug.data.cached_connector import CachedConnector
 from kpidebug.data.connector import (
     ConnectorError,
     DataSourceConnector,
-    MetricDescriptor,
-    TableDescriptor,
 )
-from kpidebug.data.data_store import AbstractDataStore
+from kpidebug.data.data_source_store import DataSourceStore
+from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.stripe.connector import StripeConnector
-from kpidebug.data.types import DataSource, DataSourceType
+from kpidebug.data.types import DataSource, DataSourceType, TableDescriptor
 from kpidebug.management.types import ProjectMember, Role
 
 router = APIRouter(
@@ -23,9 +23,23 @@ router = APIRouter(
     tags=["data-sources"],
 )
 
-CONNECTORS: dict[DataSourceType, DataSourceConnector] = {
-    DataSourceType.STRIPE: StripeConnector(),
+CONNECTOR_CLASSES: dict[DataSourceType, type[DataSourceConnector]] = {
+    DataSourceType.STRIPE: StripeConnector,
 }
+
+
+def make_connector(
+    source: DataSource,
+    store: PostgresDataSourceStore,
+) -> CachedConnector:
+    connector_cls = CONNECTOR_CLASSES.get(source.type)
+    if connector_cls is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No connector for: {source.type.value}",
+        )
+    live = connector_cls(source)
+    return CachedConnector(source, live, store)
 
 
 @dataclass_json
@@ -42,9 +56,9 @@ def list_data_sources(
     _member: ProjectMember = Depends(
         require_project_role(Role.READ)
     ),
-    data_store: AbstractDataStore = Depends(get_data_store),
+    data_source_store: DataSourceStore = Depends(get_data_source_store),
 ) -> list[DataSource]:
-    return data_store.list_sources(project_id)
+    return data_source_store.list_sources(project_id)
 
 
 @router.post("")
@@ -54,7 +68,7 @@ def connect_data_source(
     _member: ProjectMember = Depends(
         require_project_role(Role.ADMIN)
     ),
-    data_store: AbstractDataStore = Depends(get_data_store),
+    data_source_store: DataSourceStore = Depends(get_data_source_store),
 ) -> DataSource:
     try:
         source_type = DataSourceType(body.source_type)
@@ -64,33 +78,27 @@ def connect_data_source(
             detail=f"Unknown source type: {body.source_type}",
         )
 
-    connector = CONNECTORS.get(source_type)
-    if connector is None:
+    connector_cls = CONNECTOR_CLASSES.get(source_type)
+    if connector_cls is None:
         raise HTTPException(
             status_code=400,
             detail=f"No connector for: {body.source_type}",
         )
 
+    temp_source = DataSource(type=source_type, credentials=body.credentials)
+    connector = connector_cls(temp_source)
+
     try:
-        connector.validate_credentials(body.credentials)
+        connector.validate_credentials()
     except ConnectorError as e:
         raise HTTPException(
             status_code=400, detail=str(e)
         )
 
-    # Collect all dimensions from metrics
-    metrics = connector.discover_metrics()
-    all_dims = {}
-    for m in metrics:
-        for dim in m.dimensions:
-            all_dims[dim.name] = dim
-    dimensions = list(all_dims.values())
-
-    source = data_store.create_source(
+    source = data_source_store.create_source(
         project_id=project_id,
         name=body.name,
         source_type=source_type,
-        dimensions=dimensions,
         credentials=body.credentials,
     )
 
@@ -104,62 +112,100 @@ def disconnect_data_source(
     _member: ProjectMember = Depends(
         require_project_role(Role.ADMIN)
     ),
-    data_store: AbstractDataStore = Depends(get_data_store),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
 ) -> dict:
-    source = data_store.get_source(project_id, source_id)
+    source = data_source_store.get_source(project_id, source_id)
     if source is None:
         raise HTTPException(
             status_code=404, detail="Data source not found"
         )
-    data_store.delete_source(project_id, source_id)
+    data_source_store.clear_cached_source(source_id)
+    data_source_store.delete_source(project_id, source_id)
     return {"ok": True}
 
 
-@router.get("/{source_id}/metrics")
-def discover_metrics(
-    project_id: str,
-    source_id: str,
-    _member: ProjectMember = Depends(
-        require_project_role(Role.READ)
-    ),
-    data_store: AbstractDataStore = Depends(get_data_store),
-) -> list[MetricDescriptor]:
-    source = data_store.get_source(project_id, source_id)
-    if source is None:
-        raise HTTPException(
-            status_code=404, detail="Data source not found"
-        )
-
-    connector = CONNECTORS.get(source.type)
-    if connector is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No connector for: {source.type.value}",
-        )
-
-    return connector.discover_metrics()
-
-
 @router.get("/{source_id}/tables")
-def discover_tables(
+def list_tables(
     project_id: str,
     source_id: str,
     _member: ProjectMember = Depends(
         require_project_role(Role.READ)
     ),
-    data_store: AbstractDataStore = Depends(get_data_store),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
 ) -> list[TableDescriptor]:
-    source = data_store.get_source(project_id, source_id)
+    source = data_source_store.get_source(project_id, source_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="Data source not found"
+        )
+    connector = make_connector(source, data_source_store)
+    return connector.get_tables()
+
+
+@dataclass_json
+@dataclass
+class SyncResponse:
+    tables: dict[str, int] | None = None
+    table: str = ""
+    row_count: int = 0
+
+
+@router.post("/{source_id}/sync")
+def sync_source(
+    project_id: str,
+    source_id: str,
+    _member: ProjectMember = Depends(
+        require_project_role(Role.EDIT)
+    ),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+) -> SyncResponse:
+    source = data_source_store.get_source(project_id, source_id)
     if source is None:
         raise HTTPException(
             status_code=404, detail="Data source not found"
         )
 
-    connector = CONNECTORS.get(source.type)
-    if connector is None:
+    connector = make_connector(source, data_source_store)
+
+    try:
+        results = connector.sync_all()
+    except ConnectorError as e:
         raise HTTPException(
-            status_code=400,
-            detail=f"No connector for: {source.type.value}",
+            status_code=400, detail=str(e)
         )
 
-    return connector.discover_tables()
+    return SyncResponse(tables=results)
+
+
+@router.post("/{source_id}/tables/{table_key}/sync")
+def sync_table(
+    project_id: str,
+    source_id: str,
+    table_key: str,
+    _member: ProjectMember = Depends(
+        require_project_role(Role.EDIT)
+    ),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+) -> SyncResponse:
+    source = data_source_store.get_source(project_id, source_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="Data source not found"
+        )
+
+    connector = make_connector(source, data_source_store)
+
+    tables = connector.get_tables()
+    if not any(t.key == table_key for t in tables):
+        raise HTTPException(
+            status_code=404, detail=f"Unknown table: {table_key}"
+        )
+
+    try:
+        rows = connector.sync_table(table_key)
+    except ConnectorError as e:
+        raise HTTPException(
+            status_code=400, detail=str(e)
+        )
+
+    return SyncResponse(table=table_key, row_count=len(rows))

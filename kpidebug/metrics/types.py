@@ -3,7 +3,24 @@ from enum import Enum
 
 from dataclasses_json import dataclass_json
 
-from kpidebug.data.types import DataSourceType, DimensionValue
+from kpidebug.data.types import DataSourceType
+
+
+@dataclass_json
+@dataclass(frozen=True)
+class DimensionValue:
+    dimension: str = ""
+    value: str = ""
+
+
+@dataclass_json
+@dataclass
+class DataRecord:
+    source_type: DataSourceType = DataSourceType.CUSTOM
+    field: str = ""
+    value: float = 0.0
+    timestamp: str = ""
+    dimension_values: list[DimensionValue] = dataclass_field(default_factory=list)
 
 
 class MetricDataType(str, Enum):

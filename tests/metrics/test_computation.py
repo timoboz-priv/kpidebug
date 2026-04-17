@@ -1,6 +1,7 @@
 import pytest
 
-from kpidebug.data.types import DataRecord, DataSourceType
+from kpidebug.data.types import DataSourceType
+from kpidebug.metrics.types import DataRecord
 from kpidebug.metrics.computation import ComputationError, evaluate, validate
 
 

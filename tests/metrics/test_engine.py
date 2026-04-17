@@ -1,6 +1,7 @@
 import pytest
 
-from kpidebug.data.types import DataRecord, DataSourceType, DimensionValue
+from kpidebug.data.types import DataSourceType
+from kpidebug.metrics.types import DataRecord, DimensionValue
 from kpidebug.metrics.engine import MetricEngine
 from kpidebug.metrics.registry import MetricRegistry, registry
 from kpidebug.metrics.types import (

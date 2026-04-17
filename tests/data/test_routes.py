@@ -4,15 +4,13 @@ from fastapi.testclient import TestClient
 
 from kpidebug.api.auth import (
     get_current_user,
-    get_data_store,
+    get_data_source_store,
     get_project_store,
 )
 from kpidebug.api.server import app
 from kpidebug.data.types import (
     DataSource,
     DataSourceType,
-    Dimension,
-    DimensionType,
 )
 from kpidebug.management.types import ProjectMember, Role, User
 
@@ -33,16 +31,13 @@ def _mock_project_store() -> MagicMock:
     return store
 
 
-def _mock_data_store() -> MagicMock:
+def _mock_data_source_store() -> MagicMock:
     store = MagicMock()
     store.list_sources.return_value = [
         DataSource(
             id="s1", project_id="p1",
             name="Stripe Prod",
             type=DataSourceType.STRIPE,
-            dimensions=[
-                Dimension(name="time", type=DimensionType.TEMPORAL),
-            ],
         ),
     ]
     store.get_source.return_value = DataSource(
@@ -61,9 +56,9 @@ def _mock_data_store() -> MagicMock:
 
 class TestDataSourceRoutes:
     def setup_method(self):
-        self.data_store = _mock_data_store()
+        self.data_source_store = _mock_data_source_store()
         app.dependency_overrides[get_current_user] = lambda: _mock_user()
-        app.dependency_overrides[get_data_store] = lambda: self.data_store
+        app.dependency_overrides[get_data_source_store] = lambda: self.data_source_store
         app.dependency_overrides[get_project_store] = lambda: _mock_project_store()
         self.client = TestClient(app)
 
@@ -94,7 +89,7 @@ class TestDataSourceRoutes:
             headers={"X-Project-Id": "p1"},
         )
         assert response.status_code == 200
-        self.data_store.create_source.assert_called_once()
+        self.data_source_store.create_source.assert_called_once()
 
     def test_disconnect_source(self):
         response = self.client.delete(
@@ -103,16 +98,7 @@ class TestDataSourceRoutes:
         )
         assert response.status_code == 200
 
-    def test_discover_metrics(self):
-        response = self.client.get(
-            "/api/projects/p1/data-sources/s1/metrics",
-            headers={"X-Project-Id": "p1"},
-        )
-        assert response.status_code == 200
-        keys = [m["key"] for m in response.json()]
-        assert "charges.amount" in keys
-
-    def test_discover_tables(self):
+    def test_list_tables(self):
         response = self.client.get(
             "/api/projects/p1/data-sources/s1/tables",
             headers={"X-Project-Id": "p1"},

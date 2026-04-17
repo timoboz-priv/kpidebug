@@ -56,6 +56,16 @@ class PostgresUserStore(AbstractUserStore):
         with self.pool.connection() as conn:
             conn.execute("DELETE FROM users")
 
+    def get_by_email(self, email: str) -> User | None:
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                "SELECT id, name, email, avatar_url FROM users WHERE email = %s LIMIT 1",
+                (email,),
+            ).fetchone()
+        if row is None:
+            return None
+        return User(id=row[0], name=row[1], email=row[2], avatar_url=row[3])
+
     def get_or_create(self, user_id: str, email: str | None, name: str | None, avatar_url: str | None) -> User:
         existing = self.get(user_id)
         if existing is not None:

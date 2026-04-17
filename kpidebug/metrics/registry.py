@@ -1,6 +1,6 @@
 from typing import Callable
 
-from kpidebug.data.types import DataRecord, DimensionValue
+from kpidebug.metrics.types import DataRecord, DimensionValue
 
 BuiltinMetricFn = Callable[[list[DataRecord], list[DimensionValue]], float]
 

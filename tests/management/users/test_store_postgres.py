@@ -62,6 +62,24 @@ class TestPostgresUserStore:
         first_call = conn.execute.call_args_list[0]
         assert "UPDATE users SET" in first_call[0][0]
 
+    def test_get_by_email_returns_user(self):
+        store, pool = self._make_store()
+        conn = self._mock_connection(pool)
+        conn.execute.return_value.fetchone.return_value = ("u1", "Alice", "alice@test.com", "")
+
+        user = store.get_by_email("alice@test.com")
+
+        assert user is not None
+        assert user.id == "u1"
+        assert user.email == "alice@test.com"
+
+    def test_get_by_email_returns_none(self):
+        store, pool = self._make_store()
+        conn = self._mock_connection(pool)
+        conn.execute.return_value.fetchone.return_value = None
+
+        assert store.get_by_email("nobody@test.com") is None
+
     def test_get_or_create_returns_existing(self):
         store, pool = self._make_store()
         conn = self._mock_connection(pool)

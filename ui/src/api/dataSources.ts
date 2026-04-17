@@ -1,17 +1,5 @@
 import apiClient from "./client";
 
-export interface Dimension {
-  name: string;
-  type: "temporal" | "categorical";
-}
-
-export interface MetricDescriptor {
-  key: string;
-  name: string;
-  description: string;
-  dimensions: Dimension[];
-}
-
 export interface TableColumn {
   key: string;
   name: string;
@@ -32,7 +20,6 @@ export interface DataSource {
   project_id: string;
   name: string;
   type: string;
-  dimensions: Dimension[];
 }
 
 export interface ConnectRequest {
@@ -71,17 +58,6 @@ export async function disconnectDataSource(
   );
 }
 
-export async function discoverMetrics(
-  projectId: string,
-  sourceId: string,
-): Promise<MetricDescriptor[]> {
-  const response = await apiClient.get<MetricDescriptor[]>(
-    `/api/projects/${projectId}/data-sources/${sourceId}/metrics`,
-    { headers: { "X-Project-Id": projectId } },
-  );
-  return response.data;
-}
-
 export async function discoverTables(
   projectId: string,
   sourceId: string,
@@ -93,48 +69,40 @@ export async function discoverTables(
   return response.data;
 }
 
-// --- Metric Explorer ---
+// --- Sync ---
 
-export interface DimensionFilter {
-  dimension: string;
-  value: string;
+export interface SyncResponse {
+  tables?: Record<string, number> | null;
+  table?: string;
+  row_count?: number;
 }
 
-export interface MetricExploreRequest {
-  source_id: string;
-  metric_key: string;
-  aggregation: string;
-  group_by?: string | null;
-  filters?: DimensionFilter[];
-  start_time?: string | null;
-  end_time?: string | null;
-}
-
-export interface ExploreResultRow {
-  value: number;
-  group: string | null;
-}
-
-export interface MetricExploreResponse {
-  metric_key: string;
-  aggregation: string;
-  results: ExploreResultRow[];
-  record_count: number;
-}
-
-export async function exploreMetric(
+export async function syncSource(
   projectId: string,
-  data: MetricExploreRequest,
-): Promise<MetricExploreResponse> {
-  const response = await apiClient.post<MetricExploreResponse>(
-    `/api/projects/${projectId}/metrics/explore`,
-    data,
+  sourceId: string,
+): Promise<SyncResponse> {
+  const response = await apiClient.post<SyncResponse>(
+    `/api/projects/${projectId}/data-sources/${sourceId}/sync`,
+    {},
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;
 }
 
-// --- Table Explorer ---
+export async function syncTable(
+  projectId: string,
+  sourceId: string,
+  tableKey: string,
+): Promise<SyncResponse> {
+  const response = await apiClient.post<SyncResponse>(
+    `/api/projects/${projectId}/data-sources/${sourceId}/tables/${tableKey}/sync`,
+    {},
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+// --- Table Query ---
 
 export interface TableFilter {
   column: string;
@@ -157,12 +125,6 @@ export interface TableQueryResponse {
   columns: TableColumn[];
   rows: Record<string, unknown>[];
   total_count: number;
-  from_cache: boolean;
-}
-
-export interface SyncResponse {
-  table: string;
-  row_count: number;
 }
 
 export async function queryTable(
@@ -172,19 +134,6 @@ export async function queryTable(
   const response = await apiClient.post<TableQueryResponse>(
     `/api/projects/${projectId}/data/query`,
     data,
-    { headers: { "X-Project-Id": projectId } },
-  );
-  return response.data;
-}
-
-export async function syncTable(
-  projectId: string,
-  sourceId: string,
-  table: string,
-): Promise<SyncResponse> {
-  const response = await apiClient.post<SyncResponse>(
-    `/api/projects/${projectId}/data/sync`,
-    { source_id: sourceId, table },
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;

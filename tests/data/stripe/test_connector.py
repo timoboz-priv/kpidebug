@@ -4,25 +4,33 @@ import pytest
 import stripe
 
 from kpidebug.data.connector import ConnectorError
+from kpidebug.data.types import DataSource, DataSourceType, TableFilter, TableQuery
 from kpidebug.data.stripe.connector import StripeConnector
 
 
-class TestStripeConnectorValidation:
-    def setup_method(self):
-        self.connector = StripeConnector()
+def _make_connector(api_key: str = "sk_test") -> StripeConnector:
+    source = DataSource(type=DataSourceType.STRIPE, credentials={"api_key": api_key})
+    return StripeConnector(source)
 
+
+def _make_connector_no_key() -> StripeConnector:
+    source = DataSource(type=DataSourceType.STRIPE, credentials={})
+    return StripeConnector(source)
+
+
+class TestStripeConnectorValidation:
     def test_missing_api_key(self):
+        connector = _make_connector_no_key()
         with pytest.raises(ConnectorError, match="Missing api_key"):
-            self.connector.validate_credentials({})
+            connector.validate_credentials()
 
     @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
     def test_valid_api_key(self, mock_client_cls):
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
 
-        result = self.connector.validate_credentials(
-            {"api_key": "sk_test_valid"}
-        )
+        connector = _make_connector("sk_test_valid")
+        result = connector.validate_credentials()
         assert result is True
 
     @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
@@ -32,36 +40,15 @@ class TestStripeConnectorValidation:
         mock_client.v1.balance.retrieve.side_effect = (
             stripe.AuthenticationError("Invalid")
         )
+        connector = _make_connector("sk_test_bad")
         with pytest.raises(ConnectorError, match="Invalid Stripe API key"):
-            self.connector.validate_credentials(
-                {"api_key": "sk_test_bad"}
-            )
+            connector.validate_credentials()
 
 
-class TestStripeConnectorDiscoverMetrics:
-    def test_returns_all_metrics(self):
-        connector = StripeConnector()
-        metrics = connector.discover_metrics()
-        assert len(metrics) > 0
-        keys = [m.key for m in metrics]
-        assert "charges.amount" in keys
-        assert "charges.count" in keys
-        assert "customers.count" in keys
-        assert "subscriptions.count" in keys
-
-    def test_metrics_have_dimensions(self):
-        connector = StripeConnector()
-        metrics = connector.discover_metrics()
-        for metric in metrics:
-            assert len(metric.dimensions) > 0
-            dim_names = [d.name for d in metric.dimensions]
-            assert "time" in dim_names
-
-
-class TestStripeConnectorDiscoverTables:
+class TestStripeConnectorGetTables:
     def test_returns_all_tables(self):
-        connector = StripeConnector()
-        tables = connector.discover_tables()
+        connector = _make_connector()
+        tables = connector.get_tables()
         keys = [t.key for t in tables]
         assert "charges" in keys
         assert "customers" in keys
@@ -70,116 +57,94 @@ class TestStripeConnectorDiscoverTables:
         assert "refunds" in keys
 
     def test_tables_have_columns(self):
-        connector = StripeConnector()
-        tables = connector.discover_tables()
+        connector = _make_connector()
+        tables = connector.get_tables()
         for table in tables:
             assert len(table.columns) > 0
 
 
-class TestStripeConnectorFetchMetricData:
-    def setup_method(self):
-        self.connector = StripeConnector()
+def _mock_charges(mock_client_cls):
+    mock_client = MagicMock()
+    mock_client_cls.return_value = mock_client
 
-    def test_missing_credentials(self):
-        with pytest.raises(ConnectorError, match="Missing api_key"):
-            self.connector.fetch_metric_data({})
+    charges = []
+    for i, (amount, currency, status) in enumerate([
+        (5000, "usd", "succeeded"),
+        (3000, "eur", "succeeded"),
+        (1000, "usd", "failed"),
+    ]):
+        c = MagicMock()
+        c.id = f"ch_{i}"
+        c.amount = amount
+        c.currency = currency
+        c.status = status
+        c.description = f"Charge {i}"
+        c.customer = f"cus_{i}"
+        c.created = 1711929600 + i
+        charges.append(c)
 
-    def test_unknown_metric(self):
-        with pytest.raises(ConnectorError, match="Unknown metric"):
-            self.connector.fetch_metric_data(
-                {"api_key": "sk_test"},
-                metric_keys=["nonexistent.metric"],
-            )
-
-    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
-    def test_fetch_charges(self, mock_client_cls):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
-
-        charge = MagicMock()
-        charge.id = "ch_1"
-        charge.amount = 5000
-        charge.currency = "usd"
-        charge.status = "succeeded"
-        charge.created = 1711929600
-
-        list_result = MagicMock()
-        list_result.data = [charge]
-        list_result.has_more = False
-        mock_client.v1.charges.list.return_value = list_result
-
-        records = self.connector.fetch_metric_data(
-            credentials={"api_key": "sk_test"},
-            metric_keys=["charges.amount", "charges.count"],
-        )
-
-        assert len(records) == 2
-        amount_rec = [r for r in records if r.field == "charges.amount"][0]
-        count_rec = [r for r in records if r.field == "charges.count"][0]
-        assert amount_rec.value == 5000.0
-        assert count_rec.value == 1.0
-
-    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
-    def test_fetch_customers(self, mock_client_cls):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
-
-        customer = MagicMock()
-        customer.id = "cus_1"
-        customer.created = 1711929600
-
-        list_result = MagicMock()
-        list_result.data = [customer]
-        list_result.has_more = False
-        mock_client.v1.customers.list.return_value = list_result
-
-        records = self.connector.fetch_metric_data(
-            credentials={"api_key": "sk_test"},
-            metric_keys=["customers.count"],
-        )
-        assert len(records) == 1
-        assert records[0].field == "customers.count"
-        assert records[0].value == 1.0
+    list_result = MagicMock()
+    list_result.data = charges
+    list_result.has_more = False
+    mock_client.v1.charges.list.return_value = list_result
+    return mock_client
 
 
 class TestStripeConnectorFetchTableData:
-    def setup_method(self):
-        self.connector = StripeConnector()
-
     def test_unknown_table(self):
+        connector = _make_connector()
         with pytest.raises(ConnectorError, match="Unknown table"):
-            self.connector.fetch_table_data(
-                {"api_key": "sk_test"}, "nonexistent"
-            )
+            connector.fetch_table_data("nonexistent")
 
     @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
-    def test_fetch_charges_table(self, mock_client_cls):
-        mock_client = MagicMock()
-        mock_client_cls.return_value = mock_client
+    def test_fetch_returns_table_result(self, mock_client_cls):
+        _mock_charges(mock_client_cls)
+        connector = _make_connector()
+        result = connector.fetch_table_data("charges")
 
-        charge = MagicMock()
-        charge.id = "ch_1"
-        charge.amount = 5000
-        charge.currency = "usd"
-        charge.status = "succeeded"
-        charge.description = "Test charge"
-        charge.customer = "cus_1"
-        charge.created = 1711929600
+        assert result.total_count == 3
+        assert len(result.rows) == 3
+        assert result.rows[0]["id"] == "ch_0"
 
-        list_result = MagicMock()
-        list_result.data = [charge]
-        list_result.has_more = False
-        mock_client.v1.charges.list.return_value = list_result
-
-        rows = self.connector.fetch_table_data(
-            {"api_key": "sk_test"}, "charges"
+    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
+    def test_fetch_with_filter(self, mock_client_cls):
+        _mock_charges(mock_client_cls)
+        connector = _make_connector()
+        query = TableQuery(
+            filters=[TableFilter(column="currency", operator="eq", value="usd")],
         )
+        result = connector.fetch_table_data("charges", query)
 
-        assert len(rows) == 1
-        assert rows[0]["id"] == "ch_1"
-        assert rows[0]["amount"] == 5000
-        assert rows[0]["currency"] == "usd"
-        assert rows[0]["status"] == "succeeded"
+        assert result.total_count == 2
+        assert all(r["currency"] == "usd" for r in result.rows)
+
+    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
+    def test_fetch_with_sort(self, mock_client_cls):
+        _mock_charges(mock_client_cls)
+        connector = _make_connector()
+        query = TableQuery(sort_by="amount", sort_order="desc")
+        result = connector.fetch_table_data("charges", query)
+
+        amounts = [r["amount"] for r in result.rows]
+        assert amounts == [5000, 3000, 1000]
+
+    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
+    def test_fetch_with_pagination(self, mock_client_cls):
+        _mock_charges(mock_client_cls)
+        connector = _make_connector()
+        query = TableQuery(limit=2, offset=0)
+        result = connector.fetch_table_data("charges", query)
+
+        assert result.total_count == 3
+        assert len(result.rows) == 2
+
+    @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
+    def test_fetch_all_rows(self, mock_client_cls):
+        _mock_charges(mock_client_cls)
+        connector = _make_connector()
+        rows = connector.fetch_all_rows("charges")
+
+        assert len(rows) == 3
 
     @patch("kpidebug.data.stripe.connector.stripe.StripeClient")
     def test_fetch_customers_table(self, mock_client_cls):
@@ -197,10 +162,9 @@ class TestStripeConnectorFetchTableData:
         list_result.has_more = False
         mock_client.v1.customers.list.return_value = list_result
 
-        rows = self.connector.fetch_table_data(
-            {"api_key": "sk_test"}, "customers"
-        )
+        connector = _make_connector()
+        result = connector.fetch_table_data("customers")
 
-        assert len(rows) == 1
-        assert rows[0]["name"] == "Alice"
-        assert rows[0]["email"] == "alice@test.com"
+        assert result.total_count == 1
+        assert result.rows[0]["name"] == "Alice"
+        assert result.rows[0]["email"] == "alice@test.com"

@@ -91,14 +91,10 @@ def add_member(
     project_store: AbstractProjectStore = Depends(get_project_store),
     user_store: AbstractUserStore = Depends(get_user_store),
 ) -> ProjectMember:
-    # Find user by email
-    # For now, we create a placeholder user entry if they don't exist yet.
-    # They'll be fully provisioned on first login.
-    from google.cloud.firestore import Client as FirestoreClient
-    db = project_store.db if hasattr(project_store, "db") else None
-    user_id = _find_user_id_by_email(db, body.email)
-    if user_id is None:
+    target_user = user_store.get_by_email(body.email)
+    if target_user is None:
         raise HTTPException(status_code=404, detail="No user found with that email. They must sign in at least once first.")
+    user_id = target_user.id
 
     existing = project_store.get_member(project_id, user_id)
     if existing is not None:
@@ -149,10 +145,3 @@ def _require_membership(project_store: AbstractProjectStore, project_id: str, us
     return member
 
 
-def _find_user_id_by_email(db, email: str) -> str | None:
-    if db is None:
-        return None
-    docs = db.collection("users").where("email", "==", email).limit(1).get()
-    for doc in docs:
-        return doc.id
-    return None

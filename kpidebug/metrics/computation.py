@@ -1,7 +1,7 @@
 import ast
 import operator
 
-from kpidebug.data.types import DataRecord
+from kpidebug.metrics.types import DataRecord
 
 
 class ComputationError(Exception):

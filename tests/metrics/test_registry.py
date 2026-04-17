@@ -1,4 +1,4 @@
-from kpidebug.data.types import DataRecord, DimensionValue
+from kpidebug.metrics.types import DataRecord, DimensionValue
 from kpidebug.metrics.registry import MetricRegistry
 
 

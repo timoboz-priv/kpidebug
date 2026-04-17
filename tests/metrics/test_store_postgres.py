@@ -1,7 +1,8 @@
 import json
 from unittest.mock import MagicMock
 
-from kpidebug.data.types import DataSourceType, DimensionValue
+from kpidebug.data.types import DataSourceType
+from kpidebug.metrics.types import DimensionValue
 from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
 from kpidebug.metrics.types import (
     MetricDataType,

@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 
-from kpidebug.data.types import DataSource, DataSourceType, Dimension
+from kpidebug.data.types import DataSource, DataSourceType
 
 
-class AbstractDataStore(ABC):
+class DataSourceStore(ABC):
     @abstractmethod
     def create_source(
         self, project_id: str, name: str,
-        source_type: DataSourceType, dimensions: list[Dimension],
+        source_type: DataSourceType,
         credentials: dict[str, str] | None = None,
     ) -> DataSource:
         ...

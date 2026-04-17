@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 
 from kpidebug.common.db import ConnectionPoolManager
-from kpidebug.data.types import DataSourceType, DimensionValue
+from kpidebug.data.types import DataSourceType
+from kpidebug.metrics.types import DimensionValue
 from kpidebug.metrics.types import (
     MetricDataType,
     MetricDefinition,

@@ -21,3 +21,5 @@ class ColumnAnnotation(str, Enum):
     PHONE = "phone"
     PERSON_NAME = "person_name"
     QUANTITY = "quantity"
+    DISPLAY_NAME = "display_name"
+    SERIAL_NUMBER = "serial_number"

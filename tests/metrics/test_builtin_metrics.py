@@ -9,6 +9,11 @@ class TestBuiltinMetricRegistry:
         assert "stripe.customer_count" in keys
         assert "stripe.mrr" in keys
         assert "stripe.refund_rate" in keys
+        assert "stripe.total_fees" in keys
+        assert "stripe.refund_volume" in keys
+        assert "stripe.dispute_count" in keys
+        assert "stripe.invoice_collection_rate" in keys
+        assert "stripe.payout_volume" in keys
 
     def test_get_unknown_returns_none(self):
         assert builtin_registry.get("nonexistent") is None
@@ -105,3 +110,78 @@ class TestRefundRate:
     def test_zero_when_no_charges(self):
         results = builtin_registry.compute("stripe.refund_rate", [])
         assert results[0].value == 0.0
+
+
+class TestTotalFees:
+    def test_sums_all_fees(self):
+        rows = [
+            {"fee": 150, "type": "charge"},
+            {"fee": 50, "type": "refund"},
+        ]
+        results = builtin_registry.compute("stripe.total_fees", rows)
+        assert results[0].value == 200.0
+
+    def test_grouped_by_type(self):
+        rows = [
+            {"fee": 150, "type": "charge"},
+            {"fee": 50, "type": "refund"},
+            {"fee": 100, "type": "charge"},
+        ]
+        results = builtin_registry.compute(
+            "stripe.total_fees", rows, group_by=["type"],
+        )
+        by_group = {r.groups["type"]: r.value for r in results}
+        assert by_group["charge"] == 250.0
+        assert by_group["refund"] == 50.0
+
+
+class TestRefundVolume:
+    def test_sums_refund_amounts(self):
+        rows = [
+            {"amount": 1000, "reason": "requested_by_customer"},
+            {"amount": 500, "reason": "fraudulent"},
+        ]
+        results = builtin_registry.compute("stripe.refund_volume", rows)
+        assert results[0].value == 1500.0
+
+
+class TestDisputeCount:
+    def test_counts_disputes(self):
+        rows = [
+            {"id": "dp_1", "reason": "fraudulent"},
+            {"id": "dp_2", "reason": "duplicate"},
+        ]
+        results = builtin_registry.compute("stripe.dispute_count", rows)
+        assert results[0].value == 2.0
+
+
+class TestInvoiceCollectionRate:
+    def test_computes_rate(self):
+        rows = [
+            {"amount_due": 10000, "amount_paid": 8000},
+            {"amount_due": 5000, "amount_paid": 5000},
+        ]
+        results = builtin_registry.compute(
+            "stripe.invoice_collection_rate", rows,
+        )
+        assert abs(results[0].value - 86.67) < 0.1
+
+
+class TestPayoutVolume:
+    def test_sums_payouts(self):
+        rows = [
+            {"amount": 50000, "currency": "usd"},
+            {"amount": 30000, "currency": "usd"},
+        ]
+        results = builtin_registry.compute("stripe.payout_volume", rows)
+        assert results[0].value == 80000.0
+
+    def test_with_aggregation_avg(self):
+        rows = [
+            {"amount": 50000},
+            {"amount": 30000},
+        ]
+        results = builtin_registry.compute(
+            "stripe.payout_volume", rows, aggregation="avg",
+        )
+        assert results[0].value == 40000.0

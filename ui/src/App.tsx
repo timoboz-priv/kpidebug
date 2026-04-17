@@ -8,6 +8,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./layout/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
+import MetricsPage from "./pages/MetricsPage";
 import DataTablesPage from "./pages/DataTablesPage";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 
@@ -48,6 +49,7 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/metrics" element={<MetricsPage />} />
         <Route path="/data" element={<DataTablesPage />} />
         <Route path="/settings" element={<ProjectSettingsPage />} />
       </Route>

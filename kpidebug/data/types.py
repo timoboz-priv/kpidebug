@@ -29,6 +29,7 @@ class TableColumn:
     description: str = ""
     type: ColumnType = ColumnType.STRING
     is_primary_key: bool = False
+    annotations: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass_json

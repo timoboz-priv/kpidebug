@@ -18,6 +18,7 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   AutoGraph as AutoGraphIcon,
+  ShowChart as MetricsIcon,
   TableChart as DataIcon,
 } from "@mui/icons-material";
 import { useUser } from "../contexts/UserContext";
@@ -27,6 +28,7 @@ const SIDEBAR_WIDTH = 260;
 
 const navItems = [
   { label: "Dashboard", icon: <DashboardIcon />, path: "/" },
+  { label: "Metrics", icon: <MetricsIcon />, path: "/metrics" },
   { label: "Data", icon: <DataIcon />, path: "/data" },
   { label: "Project Settings", icon: <SettingsIcon />, path: "/settings" },
 ];

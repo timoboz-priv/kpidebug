@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 
 from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
@@ -209,3 +209,117 @@ def sync_table(
         )
 
     return SyncResponse(table=table_key, row_count=len(rows))
+
+
+# --- Metrics ---
+
+from kpidebug.data.types import TableFilter
+from kpidebug.metrics.builtin_metrics import (
+    BuiltinMetric,
+    MetricComputeResult,
+    MetricDimension,
+    builtin_registry,
+)
+
+
+@dataclass_json
+@dataclass
+class MetricDescriptor:
+    key: str = ""
+    name: str = ""
+    description: str = ""
+    data_type: str = ""
+    has_custom_compute: bool = False
+    dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
+
+
+@dataclass_json
+@dataclass
+class MetricComputeRequest:
+    group_by: list[str] = dataclass_field(default_factory=list)
+    aggregation: str = "sum"
+    filters: list[TableFilter] = dataclass_field(default_factory=list)
+    time_column: str | None = None
+    time_bucket: str | None = None
+
+
+@dataclass_json
+@dataclass
+class MetricComputeResponse:
+    metric_key: str = ""
+    data_type: str = ""
+    results: list[MetricComputeResult] = dataclass_field(default_factory=list)
+
+
+@router.get("/{source_id}/metrics")
+def list_metrics(
+    project_id: str,
+    source_id: str,
+    _member: ProjectMember = Depends(
+        require_project_role(Role.READ)
+    ),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+) -> list[MetricDescriptor]:
+    source = data_source_store.get_source(project_id, source_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="Data source not found"
+        )
+
+    connector = make_connector(source, data_source_store)
+    table_keys = {t.key for t in connector.get_tables()}
+
+    descriptors: list[MetricDescriptor] = []
+    for metric in builtin_registry.list_all():
+        if metric.table in table_keys:
+            descriptors.append(MetricDescriptor(
+                key=metric.key,
+                name=metric.name,
+                description=metric.description,
+                data_type=metric.data_type,
+                has_custom_compute=metric.compute_fn is not None,
+                dimensions=metric.dimensions,
+            ))
+    return descriptors
+
+
+@router.post("/{source_id}/metrics/{metric_key}/compute")
+def compute_metric(
+    project_id: str,
+    source_id: str,
+    metric_key: str,
+    body: MetricComputeRequest,
+    _member: ProjectMember = Depends(
+        require_project_role(Role.READ)
+    ),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+) -> MetricComputeResponse:
+    source = data_source_store.get_source(project_id, source_id)
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="Data source not found"
+        )
+
+    metric = builtin_registry.get(metric_key)
+    if metric is None:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown metric: {metric_key}"
+        )
+
+    connector = make_connector(source, data_source_store)
+    all_rows = connector.fetch_all_rows(metric.table)
+
+    results = builtin_registry.compute(
+        metric_key, all_rows,
+        group_by=body.group_by or None,
+        aggregation=body.aggregation,
+        filters=body.filters or None,
+        time_column=body.time_column,
+        time_bucket=body.time_bucket,
+    )
+
+    return MetricComputeResponse(
+        metric_key=metric_key,
+        data_type=metric.data_type,
+        results=results,
+    )

@@ -6,6 +6,7 @@ export interface TableColumn {
   description: string;
   type: "string" | "number" | "currency" | "datetime" | "boolean";
   is_primary_key: boolean;
+  annotations: string[];
 }
 
 export interface TableDescriptor {
@@ -97,6 +98,66 @@ export async function syncTable(
   const response = await apiClient.post<SyncResponse>(
     `/api/projects/${projectId}/data-sources/${sourceId}/tables/${tableKey}/sync`,
     {},
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+// --- Metrics ---
+
+export interface MetricDimension {
+  key: string;
+  name: string;
+}
+
+export interface MetricDescriptor {
+  key: string;
+  name: string;
+  description: string;
+  data_type: string;
+  has_custom_compute: boolean;
+  dimensions: MetricDimension[];
+}
+
+export interface MetricComputeResult {
+  value: number;
+  groups: Record<string, string>;
+}
+
+export interface MetricComputeRequest {
+  group_by?: string[];
+  aggregation?: string;
+  filters?: TableFilter[];
+  time_column?: string | null;
+  time_bucket?: string | null;
+}
+
+export interface MetricComputeResponse {
+  metric_key: string;
+  data_type: string;
+  results: MetricComputeResult[];
+}
+
+export async function listMetrics(
+  projectId: string,
+  sourceId: string,
+): Promise<MetricDescriptor[]> {
+  const response = await apiClient.get<MetricDescriptor[]>(
+    `/api/projects/${projectId}/data-sources/${sourceId}/metrics`,
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+export async function computeMetric(
+  projectId: string,
+  sourceId: string,
+  metricKey: string,
+  request: MetricComputeRequest,
+): Promise<MetricComputeResponse> {
+  const response = await apiClient.post<MetricComputeResponse>(
+    `/api/projects/${projectId}/data-sources/${sourceId}/metrics/${metricKey}/compute`,
+    request,
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;

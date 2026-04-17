@@ -523,7 +523,7 @@ export default function DataTablesPage() {
                           <TableRow key={i} hover>
                             {result.columns.map((col) => (
                               <TableCell key={col.key}>
-                                <CellValue value={row[col.key]} type={col.type} />
+                                <CellValue value={row[col.key]} type={col.type} annotations={col.annotations} />
                               </TableCell>
                             ))}
                           </TableRow>
@@ -719,7 +719,7 @@ function DateFilterEditor({
   );
 }
 
-function CellValue({ value, type }: { value: unknown; type: string }) {
+function CellValue({ value, type, annotations }: { value: unknown; type: string; annotations?: string[] }) {
   if (value === null || value === undefined || value === "") {
     return <Typography variant="body2" color="text.disabled">&mdash;</Typography>;
   }
@@ -737,9 +737,12 @@ function CellValue({ value, type }: { value: unknown; type: string }) {
   }
 
   if (type === "number" || type === "currency") {
+    let num = Number(value);
+    const isMinorUnits = annotations?.includes("minor_units");
+    if (isMinorUnits) num = num / 100;
     return (
       <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-        {Number(value).toLocaleString()}
+        {num.toLocaleString(undefined, isMinorUnits ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined)}
       </Typography>
     );
   }

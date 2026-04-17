@@ -1,0 +1,23 @@
+from enum import Enum
+
+
+class ColumnAnnotation(str, Enum):
+    IDENTIFIER = "identifier"
+    CUSTOMER_ID = "customer_id"
+    MONEY = "money"
+    MINOR_UNITS = "minor_units"
+    CURRENCY = "currency"
+    STATUS = "status"
+    PRIMARY_DATE = "primary_date"
+    SECONDARY_DATE = "secondary_date"
+    BOOLEAN_FLAG = "boolean_flag"
+    CATEGORY = "category"
+    DESCRIPTION = "description"
+    REFERENCE = "reference"
+    GEO_COUNTRY = "geo_country"
+    GEO_CITY = "geo_city"
+    PAYMENT_METHOD = "payment_method"
+    EMAIL = "email"
+    PHONE = "phone"
+    PERSON_NAME = "person_name"
+    QUANTITY = "quantity"

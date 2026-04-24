@@ -67,3 +67,63 @@ export async function updateMemberRole(projectId: string, userId: string, role: 
 export async function removeMember(projectId: string, userId: string): Promise<void> {
   await apiClient.delete(`/api/projects/${projectId}/members/${userId}`);
 }
+
+// --- Artifacts ---
+
+export interface ProjectArtifact {
+  id: string;
+  project_id: string;
+  type: "url" | "file";
+  name: string;
+  value: string;
+  file_name: string;
+  file_size: number;
+  file_mime_type: string;
+  created_at: string;
+}
+
+export async function listArtifacts(projectId: string): Promise<ProjectArtifact[]> {
+  const response = await apiClient.get<ProjectArtifact[]>(
+    `/api/projects/${projectId}/artifacts`,
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+export async function createUrlArtifact(
+  projectId: string,
+  url: string,
+): Promise<ProjectArtifact> {
+  const response = await apiClient.post<ProjectArtifact>(
+    `/api/projects/${projectId}/artifacts/url`,
+    { url },
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+export async function createFileArtifact(
+  projectId: string,
+  file: File,
+): Promise<ProjectArtifact> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiClient.post<ProjectArtifact>(
+    `/api/projects/${projectId}/artifacts/file`,
+    formData,
+    {
+      headers: {
+        "X-Project-Id": projectId,
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  );
+  return response.data;
+}
+
+export async function deleteArtifact(projectId: string, artifactId: string): Promise<void> {
+  await apiClient.delete(
+    `/api/projects/${projectId}/artifacts/${artifactId}`,
+    { headers: { "X-Project-Id": projectId } },
+  );
+}

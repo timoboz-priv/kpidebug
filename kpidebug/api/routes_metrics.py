@@ -48,6 +48,7 @@ class MetricDescriptor:
     data_type: str = ""
     source: str = ""
     source_id: str = ""
+    time_column: str = "created"
     has_custom_compute: bool = False
     dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
 
@@ -92,6 +93,7 @@ def _to_descriptor(resolved: ResolvedMetric) -> MetricDescriptor:
         data_type=resolved.data_type,
         source=resolved.source.value,
         source_id=resolved.source_id,
+        time_column=resolved.time_column,
         has_custom_compute=resolved.has_custom_compute,
         dimensions=resolved.dimensions,
     )

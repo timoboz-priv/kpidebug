@@ -64,16 +64,6 @@ class PostgresMetricStore(AbstractMetricStore):
                 CREATE INDEX IF NOT EXISTS idx_metric_results_computed_at
                     ON metric_results(project_id, metric_id, computed_at)
             """)
-            for col, default in [
-                ("source_id", "''"),
-                ("table_name", "''"),
-                ("value_field", "''"),
-                ("aggregation", "'sum'"),
-            ]:
-                conn.execute(f"""
-                    ALTER TABLE metric_definitions
-                    ADD COLUMN IF NOT EXISTS {col} TEXT NOT NULL DEFAULT {default}
-                """)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_metric_definitions_source
                     ON metric_definitions(project_id, source_id)

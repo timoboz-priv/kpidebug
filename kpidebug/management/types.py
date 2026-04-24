@@ -41,3 +41,22 @@ class ProjectMember:
 class AddMemberRequest:
     email: str = ""
     role: Role = Role.READ
+
+
+class ArtifactType(str, Enum):
+    URL = "url"
+    FILE = "file"
+
+
+@dataclass_json
+@dataclass
+class ProjectArtifact:
+    id: str = ""
+    project_id: str = ""
+    type: ArtifactType = ArtifactType.URL
+    name: str = ""
+    value: str = ""
+    file_name: str = ""
+    file_size: int = 0
+    file_mime_type: str = ""
+    created_at: str = ""

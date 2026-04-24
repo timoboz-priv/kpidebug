@@ -1,9 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
-from kpidebug.api.auth import get_current_user, get_project_store, get_user_store, require_project_role
+from dataclasses import dataclass
+
+from dataclasses_json import dataclass_json
+
+from kpidebug.api.auth import (
+    get_artifact_store,
+    get_current_user,
+    get_project_store,
+    get_user_store,
+    require_project_role,
+)
+from kpidebug.management.artifact_store_postgres import PostgresArtifactStore
 from kpidebug.management.types import (
     AddMemberRequest,
+    ArtifactType,
     Project,
+    ProjectArtifact,
     ProjectMember,
     Role,
     User,
@@ -143,5 +156,62 @@ def _require_membership(project_store: AbstractProjectStore, project_id: str, us
     if member is None:
         raise HTTPException(status_code=403, detail="Not a member of this project")
     return member
+
+
+# --- Artifacts ---
+
+@dataclass_json
+@dataclass
+class CreateUrlArtifactRequest:
+    url: str = ""
+
+
+@router.get("/{project_id}/artifacts")
+def list_artifacts(
+    project_id: str,
+    _member: ProjectMember = Depends(require_project_role(Role.READ)),
+    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+) -> list[ProjectArtifact]:
+    return artifact_store.list(project_id)
+
+
+@router.post("/{project_id}/artifacts/url")
+def create_url_artifact(
+    project_id: str,
+    body: CreateUrlArtifactRequest,
+    _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
+    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+) -> ProjectArtifact:
+    if not body.url.strip():
+        raise HTTPException(status_code=400, detail="URL is required")
+    return artifact_store.create_url(project_id, body.url.strip())
+
+
+@router.post("/{project_id}/artifacts/file")
+async def create_file_artifact(
+    project_id: str,
+    file: UploadFile = File(...),
+    _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
+    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+) -> ProjectArtifact:
+    content = await file.read()
+    return artifact_store.create_file(
+        project_id=project_id,
+        file_name=file.filename or "unknown",
+        file_size=len(content),
+        file_mime_type=file.content_type or "application/octet-stream",
+        file_content=content,
+    )
+
+
+@router.delete("/{project_id}/artifacts/{artifact_id}")
+def delete_artifact(
+    project_id: str,
+    artifact_id: str,
+    _member: ProjectMember = Depends(require_project_role(Role.ADMIN)),
+    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+) -> dict[str, bool]:
+    artifact_store.delete(project_id, artifact_id)
+    return {"ok": True}
 
 

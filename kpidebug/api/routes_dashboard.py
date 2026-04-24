@@ -138,8 +138,6 @@ def compute_dashboard_metrics(
     period_days = body.period_days if body.period_days in (7, 30, 90) else 30
     cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
     time_filter_value = cutoff.isoformat()
-    time_filters = [TableFilter(column="created", operator="gte", value=time_filter_value)]
-
     source_cache: dict[str, SourceConnectorPair] = {}
     _warm_source_cache(project_id, data_source_store, source_cache)
 
@@ -159,26 +157,31 @@ def compute_dashboard_metrics(
             logger.warning("Failed to fetch rows for metric %s", dm.metric_id)
             continue
 
+        time_col = resolved.time_column
+        metric_time_filters = [
+            TableFilter(column=time_col, operator="gte", value=time_filter_value),
+        ]
+
         current_input = MetricComputeInput(
-            rows=all_rows, filters=time_filters,
+            rows=all_rows, filters=metric_time_filters,
         )
         current_results = compute_metric(resolved, current_input)
         current_value = current_results[0].value if current_results else 0.0
 
         sparkline_input = MetricComputeInput(
             rows=all_rows,
-            filters=time_filters,
-            time_column="created",
+            filters=metric_time_filters,
+            time_column=time_col,
             time_bucket=TimeBucket.DAY,
         )
         sparkline_results = compute_metric(resolved, sparkline_input)
         sparkline = [
             SparklinePoint(
-                date=r.groups.get("created", ""),
+                date=r.groups.get(time_col, ""),
                 value=r.value,
             )
             for r in sparkline_results
-            if r.groups.get("created")
+            if r.groups.get(time_col)
         ]
 
         results.append(DashboardMetricData(

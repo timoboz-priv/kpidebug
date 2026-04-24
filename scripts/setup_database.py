@@ -13,6 +13,7 @@ from kpidebug.management.user_store_postgres import PostgresUserStore
 from kpidebug.management.project_store_postgres import PostgresProjectStore
 from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
+from kpidebug.management.artifact_store_postgres import PostgresArtifactStore
 from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
 
 
@@ -23,6 +24,7 @@ def get_stores(pool_manager: ConnectionPoolManager) -> list:
         PostgresMetricStore(pool_manager),
         PostgresDataSourceStore(pool_manager),
         PostgresDashboardStore(pool_manager),
+        PostgresArtifactStore(pool_manager),
     ]
 
 

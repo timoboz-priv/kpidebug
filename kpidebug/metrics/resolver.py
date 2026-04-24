@@ -30,6 +30,7 @@ class ResolvedMetric:
     source: MetricSource = MetricSource.BUILTIN
     source_id: str = ""
     table: str = ""
+    time_column: str = "created"
     dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
     has_custom_compute: bool = False
     builtin: BuiltinMetric | None = None
@@ -63,6 +64,7 @@ def resolve_builtin(metric_id: str, source_id: str = "") -> ResolvedMetric | Non
         source=MetricSource.BUILTIN,
         source_id=source_id,
         table=builtin.table,
+        time_column=builtin.time_column,
         dimensions=builtin.dimensions,
         has_custom_compute=builtin.compute_fn is not None,
         builtin=builtin,
@@ -97,6 +99,7 @@ def list_builtins_for_tables(
             source=MetricSource.BUILTIN,
             source_id=source_id,
             table=m.table,
+            time_column=m.time_column,
             dimensions=m.dimensions,
             has_custom_compute=m.compute_fn is not None,
             builtin=m,

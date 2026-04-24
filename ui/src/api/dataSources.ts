@@ -124,6 +124,7 @@ export interface MetricDescriptor {
   data_type: string;
   source: string;
   source_id: string;
+  time_column: string;
   has_custom_compute: boolean;
   dimensions: MetricDimension[];
 }

@@ -88,53 +88,66 @@ class GoogleAnalyticsConnector(DataSourceConnector):
             Dimension(name=GA_DIMENSION_MAP[c.key])
             for c in dim_cols
         ]
-        ga_metrics = [
-            Metric(name=GA_METRIC_MAP[c.key])
-            for c in metric_cols
+        GA_METRICS_PER_REQUEST = 10
+        metric_batches = [
+            metric_cols[i:i + GA_METRICS_PER_REQUEST]
+            for i in range(0, len(metric_cols), GA_METRICS_PER_REQUEST)
         ]
 
         all_rows: list[dict] = []
-        offset = 0
-        limit = 10000
 
-        while True:
-            request = RunReportRequest(
-                property=f"properties/{property_id}",
-                dimensions=ga_dims,
-                metrics=ga_metrics,
-                date_ranges=[DateRange(
-                    start_date="365daysAgo",
-                    end_date="today",
-                )],
-                limit=limit,
-                offset=offset,
-            )
+        for batch_idx, batch_cols in enumerate(metric_batches):
+            ga_metrics = [
+                Metric(name=GA_METRIC_MAP[c.key])
+                for c in batch_cols
+            ]
 
-            response = client.run_report(request)
+            offset = 0
+            limit = 10000
+            batch_row_idx = 0
 
-            for row in response.rows:
-                record: dict = {}
-                for i, col in enumerate(dim_cols):
-                    val = row.dimension_values[i].value
-                    if col.key == "date":
-                        val = (
-                            f"{val[:4]}-{val[4:6]}-{val[6:8]}"
-                            if len(val) == 8 else val
-                        )
-                    record[col.key] = val
+            while True:
+                request = RunReportRequest(
+                    property=f"properties/{property_id}",
+                    dimensions=ga_dims,
+                    metrics=ga_metrics,
+                    date_ranges=[DateRange(
+                        start_date="365daysAgo",
+                        end_date="today",
+                    )],
+                    limit=limit,
+                    offset=offset,
+                )
 
-                for i, col in enumerate(metric_cols):
-                    raw = row.metric_values[i].value
-                    try:
-                        record[col.key] = float(raw)
-                    except (ValueError, TypeError):
-                        record[col.key] = 0.0
+                response = client.run_report(request)
 
-                all_rows.append(record)
+                for row in response.rows:
+                    if batch_idx == 0:
+                        record: dict = {}
+                        for i, col in enumerate(dim_cols):
+                            val = row.dimension_values[i].value
+                            if col.key == "date":
+                                val = (
+                                    f"{val[:4]}-{val[4:6]}-{val[6:8]}"
+                                    if len(val) == 8 else val
+                                )
+                            record[col.key] = val
+                        all_rows.append(record)
 
-            if len(response.rows) < limit:
-                break
-            offset += limit
+                    target = all_rows[batch_row_idx] if batch_row_idx < len(all_rows) else {}
+
+                    for i, col in enumerate(batch_cols):
+                        raw = row.metric_values[i].value
+                        try:
+                            target[col.key] = float(raw)
+                        except (ValueError, TypeError):
+                            target[col.key] = 0.0
+
+                    batch_row_idx += 1
+
+                if len(response.rows) < limit:
+                    break
+                offset += limit
 
         return all_rows
 

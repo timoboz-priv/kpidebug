@@ -25,6 +25,7 @@ class BuiltinMetric:
     table: str = ""
     data_type: str = "number"
     value_field: str = ""
+    time_column: str = "created"
     dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
     row_filter: Callable[[Row], bool] | None = dataclass_field(
         default=None, repr=False,
@@ -172,3 +173,4 @@ class BuiltinMetricRegistry:
 builtin_registry = BuiltinMetricRegistry()
 
 import kpidebug.metrics.stripe.metrics  # noqa: E402, F401
+import kpidebug.metrics.google_analytics.metrics  # noqa: E402, F401

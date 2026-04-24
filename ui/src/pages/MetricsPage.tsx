@@ -33,7 +33,6 @@ import {
   Snackbar,
 } from "@mui/material";
 import {
-  PlayArrow as RunIcon,
   Add as AddIcon,
   Close as CloseIcon,
   TableChart as TableIcon,
@@ -129,7 +128,7 @@ export default function MetricsPage() {
   const [aggregation, setAggregation] = useState("sum");
   const [filters, setFilters] = useState<MetricFilter[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
-  const [timeBucket, setTimeBucket] = useState("month");
+  const [timeBucket, setTimeBucket] = useState("day");
   const [viewMode, setViewMode] = useState<"table" | "chart">("table");
 
   const [result, setResult] = useState<MetricComputeResponse | null>(null);
@@ -203,7 +202,8 @@ export default function MetricsPage() {
     setComputing(true);
     setComputeError(null);
     try {
-      const timeFilters = timeRangeToFilters("created", timeRange);
+      const timeCol = selectedMetric.time_column || "created";
+      const timeFilters = timeRangeToFilters(timeCol, timeRange);
       const allFilters: TableFilter[] = [
         ...filters.filter((f) => f.column && f.value).map((f) => ({
           column: f.column,
@@ -224,7 +224,7 @@ export default function MetricsPage() {
           group_by: requestGroupBy.length > 0 ? requestGroupBy : undefined,
           aggregation,
           filters: allFilters.length > 0 ? allFilters : undefined,
-          time_column: isChart ? "created" : undefined,
+          time_column: isChart ? timeCol : undefined,
           time_bucket: isChart ? timeBucket : undefined,
         },
       );
@@ -236,13 +236,14 @@ export default function MetricsPage() {
     }
   }, [currentProject, selectedMetric, groupBy, aggregation, filters, timeRange, viewMode, timeBucket]);
 
+  useEffect(() => { handleCompute(); }, [handleCompute]);
+
   const handleMetricSelect = (metric: MetricDescriptor) => {
     setSelectedMetric(metric);
     setGroupBy([]);
     setAggregation("sum");
     setFilters([]);
     setTimeRange(DEFAULT_TIME_RANGE);
-    setResult(null);
     setComputeError(null);
   };
 
@@ -407,8 +408,8 @@ export default function MetricsPage() {
 
                   {viewMode === "chart" && (
                     <FormControl size="small" sx={{ minWidth: 90 }}>
-                      <InputLabel>Bucket</InputLabel>
-                      <Select value={timeBucket} label="Bucket" onChange={(e) => setTimeBucket(e.target.value)}>
+                      <InputLabel>Aggregation</InputLabel>
+                      <Select value={timeBucket} label="Aggregation" onChange={(e) => setTimeBucket(e.target.value)}>
                         {TIME_BUCKETS.map((b) => (
                           <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>
                         ))}
@@ -445,9 +446,7 @@ export default function MetricsPage() {
                     <ToggleButton value="chart"><ChartIcon fontSize="small" /></ToggleButton>
                   </ToggleButtonGroup>
 
-                  <Button variant="contained" size="small" startIcon={<RunIcon />} onClick={handleCompute} disabled={computing}>
-                    {computing ? "Computing..." : "Run"}
-                  </Button>
+                  {computing && <CircularProgress size={20} />}
                 </Box>
               </CardContent>
             </Card>
@@ -599,7 +598,7 @@ function ChartView({
   }
 
   const dimKeys = Object.keys(results[0].groups);
-  const timeKey = dimKeys.find((k) => k === "created") || dimKeys[0];
+  const timeKey = dimKeys.find((k) => k === "created" || k === "date") || dimKeys[0];
   const seriesKeys = dimKeys.filter((k) => k !== timeKey);
 
   if (seriesKeys.length === 0) {

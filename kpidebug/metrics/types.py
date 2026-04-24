@@ -72,3 +72,14 @@ class MetricResult:
     computed_at: str = ""
     period_start: str = ""
     period_end: str = ""
+
+
+@dataclass_json
+@dataclass
+class DashboardMetric:
+    id: str = ""
+    project_id: str = ""
+    source_id: str = ""
+    metric_key: str = ""
+    position: int = 0
+    added_at: str = ""

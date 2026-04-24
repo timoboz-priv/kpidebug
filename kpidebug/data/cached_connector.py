@@ -1,6 +1,27 @@
+import logging
+from dataclasses import dataclass, field as dataclass_field
+
+from dataclasses_json import dataclass_json
+
 from kpidebug.data.connector import DataSourceConnector
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.types import DataSource, TableDescriptor, TableQuery, TableResult
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass_json
+@dataclass
+class TableSyncError:
+    table: str = ""
+    error: str = ""
+
+
+@dataclass_json
+@dataclass
+class SyncAllResult:
+    tables: dict[str, int] = dataclass_field(default_factory=dict)
+    errors: list[TableSyncError] = dataclass_field(default_factory=list)
 
 
 class CachedConnector(DataSourceConnector):
@@ -50,9 +71,15 @@ class CachedConnector(DataSourceConnector):
         )
         return rows
 
-    def sync_all(self) -> dict[str, int]:
-        results: dict[str, int] = {}
+    def sync_all(self) -> SyncAllResult:
+        result = SyncAllResult()
         for table in self.get_tables():
-            rows = self.sync_table(table.key)
-            results[table.key] = len(rows)
-        return results
+            try:
+                rows = self.sync_table(table.key)
+                result.tables[table.key] = len(rows)
+            except Exception as e:
+                logger.warning("Failed to sync table %s: %s", table.key, e)
+                result.errors.append(TableSyncError(
+                    table=table.key, error=str(e),
+                ))
+        return result

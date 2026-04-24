@@ -95,11 +95,52 @@ class TestCachedConnectorSync:
         ]
         live.fetch_all_rows.return_value = [{"id": "1"}]
 
-        results = connector.sync_all()
+        result = connector.sync_all()
 
-        assert results == {"charges": 1, "customers": 1}
+        assert result.tables == {"charges": 1, "customers": 1}
+        assert result.errors == []
         assert live.fetch_all_rows.call_count == 2
         assert store.set_cached_rows.call_count == 2
+
+    def test_sync_all_continues_after_table_error(self):
+        connector, live, store = _make_cached_connector()
+        live.get_tables.return_value = [
+            TableDescriptor(key="charges"),
+            TableDescriptor(key="bad_table"),
+            TableDescriptor(key="customers"),
+        ]
+        live.fetch_all_rows.side_effect = [
+            [{"id": "1"}],
+            Exception("API rate limit"),
+            [{"id": "2"}, {"id": "3"}],
+        ]
+
+        result = connector.sync_all()
+
+        assert result.tables == {"charges": 1, "customers": 2}
+        assert len(result.errors) == 1
+        assert result.errors[0].table == "bad_table"
+        assert "API rate limit" in result.errors[0].error
+
+    def test_sync_all_collects_multiple_errors(self):
+        connector, live, store = _make_cached_connector()
+        live.get_tables.return_value = [
+            TableDescriptor(key="a"),
+            TableDescriptor(key="b"),
+            TableDescriptor(key="c"),
+        ]
+        live.fetch_all_rows.side_effect = [
+            Exception("error a"),
+            Exception("error b"),
+            [{"id": "1"}],
+        ]
+
+        result = connector.sync_all()
+
+        assert result.tables == {"c": 1}
+        assert len(result.errors) == 2
+        assert result.errors[0].table == "a"
+        assert result.errors[1].table == "b"
 
 
 class TestCachedConnectorDelegation:

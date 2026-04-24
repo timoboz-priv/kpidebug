@@ -7,7 +7,7 @@ from kpidebug.api.auth import (
     get_data_source_store,
     require_project_role,
 )
-from kpidebug.data.cached_connector import CachedConnector
+from kpidebug.data.cached_connector import CachedConnector, TableSyncError
 from kpidebug.data.connector import (
     ConnectorError,
     DataSourceConnector,
@@ -15,6 +15,7 @@ from kpidebug.data.connector import (
 from kpidebug.data.data_source_store import DataSourceStore
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.stripe.connector import StripeConnector
+from kpidebug.data.google_analytics.connector import GoogleAnalyticsConnector
 from kpidebug.data.types import DataSource, DataSourceType, TableDescriptor
 from kpidebug.management.types import ProjectMember, Role
 
@@ -25,6 +26,7 @@ router = APIRouter(
 
 CONNECTOR_CLASSES: dict[DataSourceType, type[DataSourceConnector]] = {
     DataSourceType.STRIPE: StripeConnector,
+    DataSourceType.GOOGLE_ANALYTICS: GoogleAnalyticsConnector,
 }
 
 
@@ -148,6 +150,7 @@ class SyncResponse:
     tables: dict[str, int] | None = None
     table: str = ""
     row_count: int = 0
+    errors: list[TableSyncError] = dataclass_field(default_factory=list)
 
 
 @router.post("/{source_id}/sync")
@@ -166,15 +169,12 @@ def sync_source(
         )
 
     connector = make_connector(source, data_source_store)
+    result = connector.sync_all()
 
-    try:
-        results = connector.sync_all()
-    except ConnectorError as e:
-        raise HTTPException(
-            status_code=400, detail=str(e)
-        )
-
-    return SyncResponse(tables=results)
+    return SyncResponse(
+        tables=result.tables,
+        errors=result.errors,
+    )
 
 
 @router.post("/{source_id}/tables/{table_key}/sync")

@@ -22,7 +22,7 @@ export interface AvailableSource {
   name: string;
   description: string;
   logo: string;
-  authMethod: "api_key" | "oauth";
+  authMethod: "api_key" | "oauth" | "service_account";
   authHint: string;
   authPlaceholder?: string;
 }
@@ -45,8 +45,9 @@ const AVAILABLE_SOURCES: AvailableSource[] = [
     description:
       "Web and app analytics. Track page views, sessions, users, conversions, and engagement metrics across dimensions like geography, device, and traffic source.",
     logo: "https://cdn.simpleicons.org/googleanalytics/E37400",
-    authMethod: "oauth",
-    authHint: "Sign in with your Google account to grant read access to your Analytics properties.",
+    authMethod: "service_account",
+    authHint:
+      "Enter your GA4 Property ID and paste the service account JSON key. The service account must have Viewer access on the GA4 property.",
   },
   {
     type: "datadog",

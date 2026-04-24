@@ -23,6 +23,7 @@ import { Sync as SyncIcon } from "@mui/icons-material";
 import {
   DataSource,
   TableDescriptor,
+  TableSyncError,
   connectDataSource,
   disconnectDataSource,
   discoverTables,
@@ -47,13 +48,18 @@ export default function DataSourceDetailDialog({
   connectedSource,
   onChanged,
 }: DataSourceDetailDialogProps) {
-  const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tables, setTables] = useState<TableDescriptor[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncErrors, setSyncErrors] = useState<TableSyncError[]>([]);
+
+  // Credential state
+  const [apiKey, setApiKey] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [serviceAccountJson, setServiceAccountJson] = useState("");
 
   const isConnected = connectedSource !== null;
 
@@ -67,14 +73,32 @@ export default function DataSourceDetailDialog({
     }
     if (!open) {
       setApiKey("");
+      setPropertyId("");
+      setServiceAccountJson("");
       setError(null);
       setTables([]);
     }
   }, [open, isConnected, connectedSource, projectId]);
 
+  const buildCredentials = (): Record<string, string> | null => {
+    if (source.authMethod === "api_key") {
+      if (!apiKey.trim()) return null;
+      return { api_key: apiKey.trim() };
+    }
+    if (source.authMethod === "service_account") {
+      if (!propertyId.trim() || !serviceAccountJson.trim()) return null;
+      return {
+        property_id: propertyId.trim(),
+        service_account_json: serviceAccountJson.trim(),
+      };
+    }
+    return null;
+  };
+
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.trim()) return;
+    const credentials = buildCredentials();
+    if (!credentials) return;
 
     setLoading(true);
     setError(null);
@@ -82,10 +106,12 @@ export default function DataSourceDetailDialog({
       await connectDataSource(projectId, {
         name: source.name,
         source_type: source.type,
-        credentials: { api_key: apiKey.trim() },
+        credentials,
       });
       onChanged();
       setApiKey("");
+      setPropertyId("");
+      setServiceAccountJson("");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to connect");
     } finally {
@@ -112,8 +138,12 @@ export default function DataSourceDetailDialog({
     if (!connectedSource) return;
     setSyncing(true);
     setError(null);
+    setSyncErrors([]);
     try {
-      await syncSource(projectId, connectedSource.id);
+      const result = await syncSource(projectId, connectedSource.id);
+      if (result.errors && result.errors.length > 0) {
+        setSyncErrors(result.errors);
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || "Sync failed");
     } finally {
@@ -123,9 +153,14 @@ export default function DataSourceDetailDialog({
 
   const handleClose = () => {
     setApiKey("");
+    setPropertyId("");
+    setServiceAccountJson("");
     setError(null);
+    setSyncErrors([]);
     onClose();
   };
+
+  const canConnect = buildCredentials() !== null;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -153,6 +188,19 @@ export default function DataSourceDetailDialog({
           </Alert>
         )}
 
+        {syncErrors.length > 0 && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              Some tables failed to sync:
+            </Typography>
+            {syncErrors.map((se, i) => (
+              <Typography key={i} variant="body2" sx={{ fontFamily: "monospace" }}>
+                {se.table}: {se.error}
+              </Typography>
+            ))}
+          </Alert>
+        )}
+
         {isConnected ? (
           <ConnectedView
             tables={tables}
@@ -165,7 +213,12 @@ export default function DataSourceDetailDialog({
             source={source}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
+            propertyId={propertyId}
+            onPropertyIdChange={setPropertyId}
+            serviceAccountJson={serviceAccountJson}
+            onServiceAccountJsonChange={setServiceAccountJson}
             loading={loading}
+            canConnect={canConnect}
             onSubmit={handleConnect}
           />
         )}
@@ -202,18 +255,14 @@ function ConnectedView({
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-        <Typography variant="subtitle2">
-          Available Tables
-        </Typography>
+        <Typography variant="subtitle2">Available Tables</Typography>
         <Button
           size="small"
           startIcon={
-            <SyncIcon
-              sx={{
-                animation: syncing ? "spin 1s linear infinite" : "none",
-                "@keyframes spin": { "100%": { transform: "rotate(360deg)" } },
-              }}
-            />
+            <SyncIcon sx={{
+              animation: syncing ? "spin 1s linear infinite" : "none",
+              "@keyframes spin": { "100%": { transform: "rotate(360deg)" } },
+            }} />
           }
           onClick={onSync}
           disabled={syncing}
@@ -247,14 +296,10 @@ function ConnectedView({
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {table.description}
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary">{table.description}</Typography>
                   </TableCell>
                   <TableCell align="right">
-                    <Typography variant="body2" color="text.secondary">
-                      {table.columns.length}
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary">{table.columns.length}</Typography>
                   </TableCell>
                 </TableRow>
               ))}
@@ -270,42 +315,60 @@ function ConnectForm({
   source,
   apiKey,
   onApiKeyChange,
+  propertyId,
+  onPropertyIdChange,
+  serviceAccountJson,
+  onServiceAccountJsonChange,
   loading,
+  canConnect,
   onSubmit,
 }: {
   source: AvailableSource;
   apiKey: string;
-  onApiKeyChange: (value: string) => void;
+  onApiKeyChange: (v: string) => void;
+  propertyId: string;
+  onPropertyIdChange: (v: string) => void;
+  serviceAccountJson: string;
+  onServiceAccountJsonChange: (v: string) => void;
   loading: boolean;
+  canConnect: boolean;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   if (source.authMethod === "api_key") {
     return (
       <form onSubmit={onSubmit}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Connect with API Key
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {source.authHint}
-        </Typography>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Connect with API Key</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{source.authHint}</Typography>
         <TextField
-          autoFocus
-          fullWidth
-          label="API Key"
-          type="password"
-          value={apiKey}
-          onChange={(e) => onApiKeyChange(e.target.value)}
-          placeholder={source.authPlaceholder}
-          margin="normal"
-          required
+          autoFocus fullWidth label="API Key" type="password"
+          value={apiKey} onChange={(e) => onApiKeyChange(e.target.value)}
+          placeholder={source.authPlaceholder} margin="normal" required
         />
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          disabled={loading || !apiKey.trim()}
-          sx={{ mt: 1 }}
-        >
+        <Button type="submit" variant="contained" fullWidth disabled={loading || !canConnect} sx={{ mt: 1 }}>
+          {loading ? "Connecting..." : "Connect"}
+        </Button>
+      </form>
+    );
+  }
+
+  if (source.authMethod === "service_account") {
+    return (
+      <form onSubmit={onSubmit}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Connect with Service Account</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{source.authHint}</Typography>
+        <TextField
+          autoFocus fullWidth label="Property ID" value={propertyId}
+          onChange={(e) => onPropertyIdChange(e.target.value)}
+          placeholder="123456789" margin="normal" required
+        />
+        <TextField
+          fullWidth label="Service Account JSON" value={serviceAccountJson}
+          onChange={(e) => onServiceAccountJsonChange(e.target.value)}
+          placeholder='{"type": "service_account", ...}'
+          margin="normal" required multiline minRows={4} maxRows={8}
+          sx={{ "& .MuiInputBase-input": { fontFamily: "monospace", fontSize: "0.8rem" } }}
+        />
+        <Button type="submit" variant="contained" fullWidth disabled={loading || !canConnect} sx={{ mt: 1 }}>
           {loading ? "Connecting..." : "Connect"}
         </Button>
       </form>
@@ -315,12 +378,8 @@ function ConnectForm({
   if (source.authMethod === "oauth") {
     return (
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Connect with OAuth
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {source.authHint}
-        </Typography>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Connect with OAuth</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{source.authHint}</Typography>
         <Button variant="contained" fullWidth disabled>
           Sign in with {source.name} (Coming soon)
         </Button>

@@ -20,15 +20,30 @@ import {
   AutoGraph as AutoGraphIcon,
   ShowChart as MetricsIcon,
   TableChart as DataIcon,
+  Explore as ExploreIcon,
 } from "@mui/icons-material";
 import { useUser } from "../contexts/UserContext";
 import ProjectChooser from "../components/ProjectChooser";
 
 const SIDEBAR_WIDTH = 260;
 
-const navItems = [
+interface NavItem {
+  label: string;
+  icon: React.ReactNode;
+  path: string;
+  children?: NavItem[];
+}
+
+const navItems: NavItem[] = [
   { label: "Dashboard", icon: <DashboardIcon />, path: "/" },
-  { label: "Metrics", icon: <MetricsIcon />, path: "/metrics" },
+  {
+    label: "Metrics",
+    icon: <MetricsIcon />,
+    path: "/metrics",
+    children: [
+      { label: "Explorer", icon: <ExploreIcon />, path: "/metrics/explorer" },
+    ],
+  },
   { label: "Data", icon: <DataIcon />, path: "/data" },
   { label: "Project Settings", icon: <SettingsIcon />, path: "/settings" },
 ];
@@ -76,26 +91,62 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <List sx={{ flex: 1, px: 1, py: 1 }}>
-        {navItems.map((item) => (
-          <ListItemButton
-            key={item.path}
-            selected={location.pathname === item.path}
-            onClick={() => navigate(item.path)}
-            sx={{
-              borderRadius: 1,
-              mb: 0.5,
-              "&.Mui-selected": {
-                bgcolor: "primary.main",
-                color: "white",
-                "&:hover": { bgcolor: "primary.dark" },
-                "& .MuiListItemIcon-root": { color: "white" },
-              },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.label} />
-          </ListItemButton>
-        ))}
+        {navItems.map((item) => {
+          const isActive = item.children
+            ? location.pathname === item.path
+            : location.pathname === item.path;
+          const isSectionActive = item.children
+            ? location.pathname.startsWith(item.path)
+            : location.pathname === item.path;
+
+          return (
+            <React.Fragment key={item.path}>
+              <ListItemButton
+                selected={isActive}
+                onClick={() => navigate(item.path)}
+                sx={{
+                  borderRadius: 1,
+                  mb: 0.5,
+                  "&.Mui-selected": {
+                    bgcolor: "primary.main",
+                    color: "white",
+                    "&:hover": { bgcolor: "primary.dark" },
+                    "& .MuiListItemIcon-root": { color: "white" },
+                  },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+
+              {item.children && isSectionActive && item.children.map((child) => (
+                <ListItemButton
+                  key={child.path}
+                  selected={location.pathname === child.path}
+                  onClick={() => navigate(child.path)}
+                  sx={{
+                    borderRadius: 1,
+                    mb: 0.5,
+                    pl: 4,
+                    py: 0.4,
+                    "&.Mui-selected": {
+                      bgcolor: "primary.main",
+                      color: "white",
+                      "&:hover": { bgcolor: "primary.dark" },
+                      "& .MuiListItemIcon-root": { color: "white" },
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 32 }}>{child.icon}</ListItemIcon>
+                  <ListItemText
+                    primary={child.label}
+                    sx={{ "& .MuiListItemText-primary": { fontSize: "0.85rem" } }}
+                  />
+                </ListItemButton>
+              ))}
+            </React.Fragment>
+          );
+        })}
       </List>
 
       <Divider />

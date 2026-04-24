@@ -10,6 +10,7 @@ from kpidebug.api.routes_projects import router as projects_router
 from kpidebug.api.routes_metrics import router as metrics_router
 from kpidebug.api.routes_data_sources import router as data_sources_router
 from kpidebug.api.routes_data_tables import router as data_tables_router
+from kpidebug.api.routes_dashboard import router as dashboard_router
 
 app = FastAPI(title="KPI Debug", version="0.1.0")
 
@@ -26,6 +27,7 @@ app.include_router(projects_router)
 app.include_router(metrics_router)
 app.include_router(data_sources_router)
 app.include_router(data_tables_router)
+app.include_router(dashboard_router)
 
 
 logger = logging.getLogger(__name__)

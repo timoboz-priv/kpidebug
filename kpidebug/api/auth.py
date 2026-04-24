@@ -15,6 +15,7 @@ from kpidebug.data.data_source_store import DataSourceStore
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.metrics.metric_store import AbstractMetricStore
 from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
+from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
 
 _firebase_app: firebase_admin.App | None = None
 
@@ -81,6 +82,10 @@ def get_data_source_store() -> DataSourceStore:
 
 def get_metric_store() -> AbstractMetricStore:
     return PostgresMetricStore(_get_pool_manager())
+
+
+def get_dashboard_store() -> PostgresDashboardStore:
+    return PostgresDashboardStore(_get_pool_manager())
 
 
 def get_current_user(

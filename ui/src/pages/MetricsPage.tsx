@@ -29,6 +29,8 @@ import {
   Popover,
   TextField,
   IconButton,
+  Tooltip,
+  Snackbar,
 } from "@mui/material";
 import {
   PlayArrow as RunIcon,
@@ -36,6 +38,8 @@ import {
   Close as CloseIcon,
   TableChart as TableIcon,
   ShowChart as ChartIcon,
+  DashboardCustomize as DashboardIcon,
+  Dashboard as DashboardFilledIcon,
 } from "@mui/icons-material";
 import {
   LineChart,
@@ -52,10 +56,14 @@ import {
   DataSource,
   MetricDescriptor,
   MetricComputeResponse,
+  DashboardMetricEntry,
   TableFilter,
   listDataSources,
   listMetrics,
   computeMetric,
+  listDashboardMetrics,
+  addDashboardMetric,
+  removeDashboardMetric,
 } from "../api/dataSources";
 import TimeRangeSelector, {
   TimeRange,
@@ -132,6 +140,40 @@ export default function MetricsPage() {
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null);
   const [editingFilter, setEditingFilter] = useState<MetricFilter | null>(null);
 
+  const [pinnedMetrics, setPinnedMetrics] = useState<DashboardMetricEntry[]>([]);
+  const [snackbar, setSnackbar] = useState<string | null>(null);
+
+  const fetchPinned = useCallback(async () => {
+    if (!currentProject) return;
+    try {
+      const entries = await listDashboardMetrics(currentProject.id);
+      setPinnedMetrics(entries);
+    } catch {
+      // non-critical
+    }
+  }, [currentProject]);
+
+  const isPinned = (sourceId: string, metricKey: string): DashboardMetricEntry | undefined =>
+    pinnedMetrics.find((p) => p.source_id === sourceId && p.metric_key === metricKey);
+
+  const handleTogglePin = async (sourceId: string, metricKey: string) => {
+    if (!currentProject) return;
+    const existing = isPinned(sourceId, metricKey);
+    try {
+      if (existing) {
+        await removeDashboardMetric(currentProject.id, existing.id);
+        setPinnedMetrics((prev) => prev.filter((p) => p.id !== existing.id));
+        setSnackbar("Removed from dashboard");
+      } else {
+        const entry = await addDashboardMetric(currentProject.id, sourceId, metricKey);
+        setPinnedMetrics((prev) => [...prev, entry]);
+        setSnackbar("Added to dashboard");
+      }
+    } catch {
+      setSnackbar("Failed to update dashboard");
+    }
+  };
+
   const fetchSources = useCallback(async () => {
     if (!currentProject) return;
     setLoading(true);
@@ -155,7 +197,7 @@ export default function MetricsPage() {
     }
   }, [currentProject]);
 
-  useEffect(() => { fetchSources(); }, [fetchSources]);
+  useEffect(() => { fetchSources(); fetchPinned(); }, [fetchSources, fetchPinned]);
 
   const handleCompute = useCallback(async () => {
     if (!currentProject || !selectedMetric || !selectedSourceId) return;
@@ -267,22 +309,40 @@ export default function MetricsPage() {
                 }}>
                   {source.name}
                 </ListSubheader>
-                {metrics.map((metric) => (
-                  <ListItemButton
-                    key={metric.key}
-                    selected={selectedMetric?.key === metric.key && selectedSourceId === source.id}
-                    onClick={() => handleMetricSelect(source.id, metric)}
-                    sx={{
-                      py: 0.5, pl: 3, borderRadius: 0,
-                      "&.Mui-selected": {
-                        bgcolor: "primary.main", color: "white",
-                        "&:hover": { bgcolor: "primary.dark" },
-                      },
-                    }}
-                  >
-                    <ListItemText primary={metric.name} />
-                  </ListItemButton>
-                ))}
+                {metrics.map((metric) => {
+                  const pinned = isPinned(source.id, metric.key);
+                  return (
+                    <ListItemButton
+                      key={metric.key}
+                      selected={selectedMetric?.key === metric.key && selectedSourceId === source.id}
+                      onClick={() => handleMetricSelect(source.id, metric)}
+                      sx={{
+                        py: 0.5, pl: 3, pr: 1, borderRadius: 0,
+                        "&.Mui-selected": {
+                          bgcolor: "primary.main", color: "white",
+                          "&:hover": { bgcolor: "primary.dark" },
+                        },
+                      }}
+                    >
+                      <ListItemText primary={metric.name} />
+                      <Tooltip title={pinned ? "Remove from dashboard" : "Add to dashboard"}>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTogglePin(source.id, metric.key);
+                          }}
+                          sx={{
+                            p: 0.4,
+                            color: pinned ? "inherit" : "text.disabled",
+                          }}
+                        >
+                          {pinned ? <DashboardFilledIcon fontSize="small" /> : <DashboardIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemButton>
+                  );
+                })}
               </React.Fragment>
             ))}
           </List>
@@ -448,6 +508,14 @@ export default function MetricsPage() {
           </>
         )}
       </Box>
+
+      <Snackbar
+        open={snackbar !== null}
+        autoHideDuration={2000}
+        onClose={() => setSnackbar(null)}
+        message={snackbar}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
     </Box>
   );
 }

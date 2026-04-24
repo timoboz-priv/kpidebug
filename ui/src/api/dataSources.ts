@@ -72,10 +72,16 @@ export async function discoverTables(
 
 // --- Sync ---
 
+export interface TableSyncError {
+  table: string;
+  error: string;
+}
+
 export interface SyncResponse {
   tables?: Record<string, number> | null;
   table?: string;
   row_count?: number;
+  errors?: TableSyncError[];
 }
 
 export async function syncSource(
@@ -195,6 +201,83 @@ export async function queryTable(
   const response = await apiClient.post<TableQueryResponse>(
     `/api/projects/${projectId}/data/query`,
     data,
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+// --- Dashboard ---
+
+export interface DashboardMetricEntry {
+  id: string;
+  project_id: string;
+  source_id: string;
+  metric_key: string;
+  position: number;
+  added_at: string;
+}
+
+export interface SparklinePoint {
+  date: string;
+  value: number;
+}
+
+export interface DashboardMetricData {
+  dashboard_metric_id: string;
+  source_id: string;
+  source_name: string;
+  metric_key: string;
+  name: string;
+  description: string;
+  data_type: string;
+  current_value: number;
+  sparkline: SparklinePoint[];
+}
+
+export interface DashboardComputeResponse {
+  metrics: DashboardMetricData[];
+}
+
+export async function listDashboardMetrics(
+  projectId: string,
+): Promise<DashboardMetricEntry[]> {
+  const response = await apiClient.get<DashboardMetricEntry[]>(
+    `/api/projects/${projectId}/dashboard/metrics`,
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+export async function addDashboardMetric(
+  projectId: string,
+  sourceId: string,
+  metricKey: string,
+): Promise<DashboardMetricEntry> {
+  const response = await apiClient.post<DashboardMetricEntry>(
+    `/api/projects/${projectId}/dashboard/metrics`,
+    { source_id: sourceId, metric_key: metricKey },
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
+}
+
+export async function removeDashboardMetric(
+  projectId: string,
+  dashboardMetricId: string,
+): Promise<void> {
+  await apiClient.delete(
+    `/api/projects/${projectId}/dashboard/metrics/${dashboardMetricId}`,
+    { headers: { "X-Project-Id": projectId } },
+  );
+}
+
+export async function computeDashboardMetrics(
+  projectId: string,
+  periodDays: number,
+): Promise<DashboardComputeResponse> {
+  const response = await apiClient.post<DashboardComputeResponse>(
+    `/api/projects/${projectId}/dashboard/metrics/compute`,
+    { period_days: periodDays },
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;

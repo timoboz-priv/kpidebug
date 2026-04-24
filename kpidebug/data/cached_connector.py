@@ -5,7 +5,7 @@ from dataclasses_json import dataclass_json
 
 from kpidebug.data.connector import DataSourceConnector
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
-from kpidebug.data.types import DataSource, TableDescriptor, TableQuery, TableResult
+from kpidebug.data.types import DataSource, Row, TableDescriptor, TableQuery, TableResult
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class CachedConnector(DataSourceConnector):
 
         return self.live.fetch_table_data(table_key, q)
 
-    def fetch_all_rows(self, table_key: str) -> list[dict]:
+    def fetch_all_rows(self, table_key: str) -> list[Row]:
         cached = self.store.get_cached_rows(
             self.source.id, table_key,
         )
@@ -64,7 +64,7 @@ class CachedConnector(DataSourceConnector):
             return cached
         return self.live.fetch_all_rows(table_key)
 
-    def sync_table(self, table_key: str) -> list[dict]:
+    def sync_table(self, table_key: str) -> list[Row]:
         rows = self.live.fetch_all_rows(table_key)
         self.store.set_cached_rows(
             self.source.id, table_key, rows,

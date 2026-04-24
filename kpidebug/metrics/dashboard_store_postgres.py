@@ -15,12 +15,11 @@ class PostgresDashboardStore:
                 CREATE TABLE IF NOT EXISTS dashboard_metrics (
                     id TEXT NOT NULL,
                     project_id TEXT NOT NULL,
-                    source_id TEXT NOT NULL,
-                    metric_key TEXT NOT NULL,
+                    metric_id TEXT NOT NULL,
                     position INTEGER NOT NULL DEFAULT 0,
                     added_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (project_id, id),
-                    UNIQUE (project_id, source_id, metric_key)
+                    UNIQUE (project_id, metric_id)
                 )
             """)
 
@@ -33,9 +32,9 @@ class PostgresDashboardStore:
             conn.execute("DELETE FROM dashboard_metrics")
 
     def add_metric(
-        self, project_id: str, source_id: str, metric_key: str,
+        self, project_id: str, metric_id: str,
     ) -> DashboardMetric:
-        metric_id = str(uuid.uuid4())
+        dm_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         with self.pool.connection() as conn:
@@ -47,17 +46,16 @@ class PostgresDashboardStore:
             conn.execute(
                 """
                 INSERT INTO dashboard_metrics
-                    (id, project_id, source_id, metric_key, position, added_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (id, project_id, metric_id, position, added_at)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (metric_id, project_id, source_id, metric_key, max_pos + 1, now),
+                (dm_id, project_id, metric_id, max_pos + 1, now),
             )
 
         return DashboardMetric(
-            id=metric_id,
+            id=dm_id,
             project_id=project_id,
-            source_id=source_id,
-            metric_key=metric_key,
+            metric_id=metric_id,
             position=max_pos + 1,
             added_at=now,
         )
@@ -73,7 +71,7 @@ class PostgresDashboardStore:
         with self.pool.connection() as conn:
             rows = conn.execute(
                 """
-                SELECT id, project_id, source_id, metric_key, position, added_at
+                SELECT id, project_id, metric_id, position, added_at
                 FROM dashboard_metrics
                 WHERE project_id = %s
                 ORDER BY position
@@ -86,8 +84,7 @@ class PostgresDashboardStore:
         return DashboardMetric(
             id=row[0],
             project_id=row[1],
-            source_id=row[2],
-            metric_key=row[3],
-            position=int(row[4]),
-            added_at=row[5],
+            metric_id=row[2],
+            position=int(row[3]),
+            added_at=row[4],
         )

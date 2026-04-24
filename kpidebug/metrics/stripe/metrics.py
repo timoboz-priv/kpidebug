@@ -1,3 +1,4 @@
+from kpidebug.data.types import Row
 from kpidebug.metrics.builtin_metrics import (
     BuiltinMetric,
     MetricDimension,
@@ -5,7 +6,7 @@ from kpidebug.metrics.builtin_metrics import (
 )
 
 
-def _sum_field(rows: list[dict], field: str) -> float:
+def _sum_field(rows: list[Row], field: str) -> float:
     return sum(float(r.get(field, 0) or 0) for r in rows)
 
 

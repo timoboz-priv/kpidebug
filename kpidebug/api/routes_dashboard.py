@@ -10,11 +10,20 @@ from kpidebug.api.auth import (
     get_data_source_store,
     require_project_role,
 )
-from kpidebug.data.cached_connector import CachedConnector
+from kpidebug.api.routes_data_sources import make_connector
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
-from kpidebug.metrics.builtin_metrics import builtin_registry
+from kpidebug.data.types import TableFilter
+from kpidebug.metrics.builtin_metrics import MetricComputeResult
+from kpidebug.metrics.compute import compute_metric
 from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
-from kpidebug.metrics.types import DashboardMetric
+from kpidebug.metrics.resolver import is_builtin_id, resolve_builtin
+from kpidebug.metrics.types import (
+    Aggregation,
+    DashboardMetric,
+    MetricComputeInput,
+    SourceConnectorPair,
+    TimeBucket,
+)
 from kpidebug.management.types import ProjectMember, Role
 
 logger = logging.getLogger(__name__)
@@ -30,8 +39,7 @@ router = APIRouter(
 @dataclass_json
 @dataclass
 class AddDashboardMetricRequest:
-    source_id: str = ""
-    metric_key: str = ""
+    metric_id: str = ""
 
 
 @dataclass_json
@@ -45,6 +53,7 @@ class SparklinePoint:
 @dataclass
 class DashboardMetricData:
     dashboard_metric_id: str = ""
+    metric_id: str = ""
     source_id: str = ""
     source_name: str = ""
     metric_key: str = ""
@@ -67,15 +76,6 @@ class DashboardComputeResponse:
     metrics: list[DashboardMetricData] = dataclass_field(default_factory=list)
 
 
-# --- Connector factory (shared with routes_data_sources) ---
-
-def _make_connector(
-    source, data_source_store: PostgresDataSourceStore,
-) -> CachedConnector:
-    from kpidebug.api.routes_data_sources import make_connector
-    return make_connector(source, data_source_store)
-
-
 # --- Endpoints ---
 
 @router.get("/metrics")
@@ -94,14 +94,16 @@ def add_dashboard_metric(
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
     dashboard_store: PostgresDashboardStore = Depends(get_dashboard_store),
 ) -> DashboardMetric:
-    if not body.source_id or not body.metric_key:
+    if not body.metric_id:
         raise HTTPException(
-            status_code=400, detail="source_id and metric_key are required",
+            status_code=400, detail="metric_id is required",
         )
+    if is_builtin_id(body.metric_id):
+        resolved = resolve_builtin(body.metric_id)
+        if resolved is None:
+            raise HTTPException(status_code=404, detail="Metric not found")
     try:
-        return dashboard_store.add_metric(
-            project_id, body.source_id, body.metric_key,
-        )
+        return dashboard_store.add_metric(project_id, body.metric_id)
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(
@@ -136,46 +138,40 @@ def compute_dashboard_metrics(
     period_days = body.period_days if body.period_days in (7, 30, 90) else 30
     cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
     time_filter_value = cutoff.isoformat()
-
-    from kpidebug.data.types import TableFilter
     time_filters = [TableFilter(column="created", operator="gte", value=time_filter_value)]
 
-    source_cache: dict[str, tuple] = {}
+    source_cache: dict[str, SourceConnectorPair] = {}
+    _warm_source_cache(project_id, data_source_store, source_cache)
 
     results: list[DashboardMetricData] = []
     for dm in pinned:
-        if dm.source_id not in source_cache:
-            source = data_source_store.get_source(project_id, dm.source_id)
-            if source is None:
-                continue
-            connector = _make_connector(source, data_source_store)
-            source_cache[dm.source_id] = (source, connector)
+        resolved = resolve_builtin(dm.metric_id) if is_builtin_id(dm.metric_id) else None
+        if resolved is None:
+            continue
 
-        source, connector = source_cache[dm.source_id]
-        metric = builtin_registry.get(dm.metric_key)
-        if metric is None:
+        pair = _find_source_for_table(resolved.table, source_cache)
+        if pair is None:
             continue
 
         try:
-            all_rows = connector.fetch_all_rows(metric.table)
+            all_rows = pair.connector.fetch_all_rows(resolved.table)
         except Exception:
-            logger.warning(
-                "Failed to fetch rows for %s/%s", dm.source_id, dm.metric_key,
-            )
+            logger.warning("Failed to fetch rows for metric %s", dm.metric_id)
             continue
 
-        current_results = builtin_registry.compute(
-            dm.metric_key, all_rows,
-            filters=time_filters,
+        current_input = MetricComputeInput(
+            rows=all_rows, filters=time_filters,
         )
+        current_results = compute_metric(resolved, current_input)
         current_value = current_results[0].value if current_results else 0.0
 
-        sparkline_results = builtin_registry.compute(
-            dm.metric_key, all_rows,
+        sparkline_input = MetricComputeInput(
+            rows=all_rows,
             filters=time_filters,
             time_column="created",
-            time_bucket="day",
+            time_bucket=TimeBucket.DAY,
         )
+        sparkline_results = compute_metric(resolved, sparkline_input)
         sparkline = [
             SparklinePoint(
                 date=r.groups.get("created", ""),
@@ -187,14 +183,42 @@ def compute_dashboard_metrics(
 
         results.append(DashboardMetricData(
             dashboard_metric_id=dm.id,
-            source_id=dm.source_id,
-            source_name=source.name,
-            metric_key=dm.metric_key,
-            name=metric.name,
-            description=metric.description,
-            data_type=metric.data_type,
+            metric_id=dm.metric_id,
+            source_id=pair.source.id,
+            source_name=pair.source.name,
+            metric_key=resolved.id,
+            name=resolved.name,
+            description=resolved.description,
+            data_type=resolved.data_type,
             current_value=current_value,
             sparkline=sparkline,
         ))
 
     return DashboardComputeResponse(metrics=results)
+
+
+def _warm_source_cache(
+    project_id: str,
+    data_source_store: PostgresDataSourceStore,
+    cache: dict[str, SourceConnectorPair],
+) -> None:
+    for source in data_source_store.list_sources(project_id):
+        try:
+            connector = make_connector(source, data_source_store)
+            cache[source.id] = SourceConnectorPair(source=source, connector=connector)
+        except Exception:
+            continue
+
+
+def _find_source_for_table(
+    table: str,
+    cache: dict[str, SourceConnectorPair],
+) -> SourceConnectorPair | None:
+    for pair in cache.values():
+        try:
+            table_keys = {t.key for t in pair.connector.get_tables()}
+            if table in table_keys:
+                return pair
+        except Exception:
+            continue
+    return None

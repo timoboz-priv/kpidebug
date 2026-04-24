@@ -1,7 +1,7 @@
 import ast
 import operator
 
-from kpidebug.metrics.types import DataRecord
+from kpidebug.data.types import Row
 
 
 class ComputationError(Exception):
@@ -23,44 +23,42 @@ UNARY_OPS: dict[type, operator] = {
 }
 
 
-def _records_for_field(records: list[DataRecord], field_name: str) -> list[DataRecord]:
-    return [r for r in records if r.field == field_name]
+def _values_for_field(rows: list[Row], field_name: str) -> list[float]:
+    return [float(r.get(field_name, 0) or 0) for r in rows if field_name in r]
 
 
-def _builtin_sum(records: list[DataRecord], field_name: str) -> float:
-    matching = _records_for_field(records, field_name)
-    return sum(r.value for r in matching)
+def _builtin_sum(rows: list[Row], field_name: str) -> float:
+    return sum(_values_for_field(rows, field_name))
 
 
-def _builtin_count(records: list[DataRecord], field_name: str) -> float:
-    matching = _records_for_field(records, field_name)
-    return float(len(matching))
+def _builtin_count(rows: list[Row], field_name: str) -> float:
+    return float(len([r for r in rows if field_name in r]))
 
 
-def _builtin_avg(records: list[DataRecord], field_name: str) -> float:
-    matching = _records_for_field(records, field_name)
-    if not matching:
+def _builtin_avg(rows: list[Row], field_name: str) -> float:
+    values = _values_for_field(rows, field_name)
+    if not values:
         return 0.0
-    return sum(r.value for r in matching) / len(matching)
+    return sum(values) / len(values)
 
 
-def _builtin_min_val(records: list[DataRecord], field_name: str) -> float:
-    matching = _records_for_field(records, field_name)
-    if not matching:
+def _builtin_min_val(rows: list[Row], field_name: str) -> float:
+    values = _values_for_field(rows, field_name)
+    if not values:
         return 0.0
-    return min(r.value for r in matching)
+    return min(values)
 
 
-def _builtin_max_val(records: list[DataRecord], field_name: str) -> float:
-    matching = _records_for_field(records, field_name)
-    if not matching:
+def _builtin_max_val(rows: list[Row], field_name: str) -> float:
+    values = _values_for_field(rows, field_name)
+    if not values:
         return 0.0
-    return max(r.value for r in matching)
+    return max(values)
 
 
-def _builtin_ratio(records: list[DataRecord], field_a: str, field_b: str) -> float:
-    numerator = _builtin_sum(records, field_a)
-    denominator = _builtin_sum(records, field_b)
+def _builtin_ratio(rows: list[Row], field_a: str, field_b: str) -> float:
+    numerator = _builtin_sum(rows, field_a)
+    denominator = _builtin_sum(rows, field_b)
     if denominator == 0.0:
         return 0.0
     return numerator / denominator
@@ -77,7 +75,6 @@ DSL_FUNCTIONS: dict[str, int] = {
 
 
 def validate(expression: str) -> None:
-    """Validate that an expression is safe to evaluate. Raises ComputationError if not."""
     try:
         tree = ast.parse(expression, mode="eval")
     except SyntaxError as e:
@@ -122,19 +119,11 @@ def _validate_node(node: ast.AST) -> None:
         raise ComputationError(f"Unsupported expression element: {type(node).__name__}")
 
 
-def evaluate(expression: str, records: list[DataRecord]) -> float:
-    """Evaluate a DSL expression against a list of data records.
-
-    The expression can use:
-    - sum('field'), count('field'), avg('field'), min_val('field'), max_val('field')
-    - ratio('field_a', 'field_b')
-    - Arithmetic operators: +, -, *, /
-    - Numeric literals
-    """
+def evaluate(expression: str, rows: list[Row]) -> float:
     validate(expression)
 
     tree = ast.parse(expression, mode="eval")
-    result = _eval_node(tree.body, records)
+    result = _eval_node(tree.body, rows)
 
     if not isinstance(result, (int, float)):
         raise ComputationError(f"Expression must evaluate to a number, got {type(result).__name__}")
@@ -142,20 +131,20 @@ def evaluate(expression: str, records: list[DataRecord]) -> float:
     return float(result)
 
 
-def _eval_node(node: ast.AST, records: list[DataRecord]) -> float:
+def _eval_node(node: ast.AST, rows: list[Row]) -> float:
     if isinstance(node, ast.Constant):
         return float(node.value)
 
     elif isinstance(node, ast.BinOp):
-        left = _eval_node(node.left, records)
-        right = _eval_node(node.right, records)
+        left = _eval_node(node.left, rows)
+        right = _eval_node(node.right, rows)
         op_fn = BINARY_OPS[type(node.op)]
         if isinstance(node.op, ast.Div) and right == 0.0:
             return 0.0
         return op_fn(left, right)
 
     elif isinstance(node, ast.UnaryOp):
-        operand = _eval_node(node.operand, records)
+        operand = _eval_node(node.operand, rows)
         op_fn = UNARY_OPS[type(node.op)]
         return op_fn(operand)
 
@@ -164,16 +153,16 @@ def _eval_node(node: ast.AST, records: list[DataRecord]) -> float:
         args = [arg.value for arg in node.args]
 
         if func_name == "sum":
-            return _builtin_sum(records, args[0])
+            return _builtin_sum(rows, args[0])
         elif func_name == "count":
-            return _builtin_count(records, args[0])
+            return _builtin_count(rows, args[0])
         elif func_name == "avg":
-            return _builtin_avg(records, args[0])
+            return _builtin_avg(rows, args[0])
         elif func_name == "min_val":
-            return _builtin_min_val(records, args[0])
+            return _builtin_min_val(rows, args[0])
         elif func_name == "max_val":
-            return _builtin_max_val(records, args[0])
+            return _builtin_max_val(rows, args[0])
         elif func_name == "ratio":
-            return _builtin_ratio(records, args[0], args[1])
+            return _builtin_ratio(rows, args[0], args[1])
 
     raise ComputationError(f"Cannot evaluate node: {type(node).__name__}")

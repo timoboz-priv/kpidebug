@@ -3,11 +3,12 @@ import uuid
 from datetime import datetime, timezone
 
 from kpidebug.common.db import ConnectionPoolManager
-from kpidebug.data.types import DataSourceType
-from kpidebug.metrics.types import DimensionValue
 from kpidebug.metrics.types import (
+    Aggregation,
+    DimensionValue,
     MetricDataType,
     MetricDefinition,
+    MetricDefinitionUpdate,
     MetricResult,
     MetricSource,
     SourceFilter,
@@ -29,7 +30,11 @@ class PostgresMetricStore(AbstractMetricStore):
                     description TEXT NOT NULL DEFAULT '',
                     data_type TEXT NOT NULL DEFAULT 'number',
                     source TEXT NOT NULL DEFAULT 'builtin',
+                    source_id TEXT NOT NULL DEFAULT '',
+                    table_name TEXT NOT NULL DEFAULT '',
                     builtin_key TEXT NOT NULL DEFAULT '',
+                    value_field TEXT NOT NULL DEFAULT '',
+                    aggregation TEXT NOT NULL DEFAULT 'sum',
                     computation TEXT NOT NULL DEFAULT '',
                     source_filters JSONB NOT NULL DEFAULT '[]',
                     dimensions JSONB NOT NULL DEFAULT '[]',
@@ -59,6 +64,25 @@ class PostgresMetricStore(AbstractMetricStore):
                 CREATE INDEX IF NOT EXISTS idx_metric_results_computed_at
                     ON metric_results(project_id, metric_id, computed_at)
             """)
+            for col, default in [
+                ("source_id", "''"),
+                ("table_name", "''"),
+                ("value_field", "''"),
+                ("aggregation", "'sum'"),
+            ]:
+                conn.execute(f"""
+                    ALTER TABLE metric_definitions
+                    ADD COLUMN IF NOT EXISTS {col} TEXT NOT NULL DEFAULT {default}
+                """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_metric_definitions_source
+                    ON metric_definitions(project_id, source_id)
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_metric_definitions_builtin
+                    ON metric_definitions(project_id, source_id, builtin_key)
+                    WHERE builtin_key != ''
+            """)
 
     def drop_tables(self) -> None:
         with self.pool.connection() as conn:
@@ -69,6 +93,12 @@ class PostgresMetricStore(AbstractMetricStore):
         with self.pool.connection() as conn:
             conn.execute("DELETE FROM metric_results")
             conn.execute("DELETE FROM metric_definitions")
+
+    _COLUMNS = (
+        "id, project_id, name, description, data_type, source, "
+        "source_id, table_name, builtin_key, value_field, aggregation, "
+        "computation, source_filters, dimensions, created_at, updated_at"
+    )
 
     def create_definition(self, definition: MetricDefinition) -> MetricDefinition:
         metric_id = definition.id or str(uuid.uuid4())
@@ -82,17 +112,16 @@ class PostgresMetricStore(AbstractMetricStore):
 
         with self.pool.connection() as conn:
             conn.execute(
-                """
-                INSERT INTO metric_definitions
-                    (id, project_id, name, description, data_type, source,
-                     builtin_key, computation, source_filters, dimensions,
-                     created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                f"""
+                INSERT INTO metric_definitions ({self._COLUMNS})
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     metric_id, definition.project_id, definition.name,
                     definition.description, definition.data_type.value,
-                    definition.source.value, definition.builtin_key,
+                    definition.source.value, definition.source_id,
+                    definition.table, definition.builtin_key,
+                    definition.value_field, definition.aggregation,
                     definition.computation, source_filters_json,
                     dimensions_json, now, now,
                 ),
@@ -106,13 +135,8 @@ class PostgresMetricStore(AbstractMetricStore):
     def get_definition(self, project_id: str, metric_id: str) -> MetricDefinition | None:
         with self.pool.connection() as conn:
             row = conn.execute(
-                """
-                SELECT id, project_id, name, description, data_type, source,
-                       builtin_key, computation, source_filters, dimensions,
-                       created_at, updated_at
-                FROM metric_definitions
-                WHERE project_id = %s AND id = %s
-                """,
+                f"SELECT {self._COLUMNS} FROM metric_definitions "
+                "WHERE project_id = %s AND id = %s",
                 (project_id, metric_id),
             ).fetchone()
         if row is None:
@@ -122,21 +146,41 @@ class PostgresMetricStore(AbstractMetricStore):
     def list_definitions(self, project_id: str) -> list[MetricDefinition]:
         with self.pool.connection() as conn:
             rows = conn.execute(
-                """
-                SELECT id, project_id, name, description, data_type, source,
-                       builtin_key, computation, source_filters, dimensions,
-                       created_at, updated_at
-                FROM metric_definitions
-                WHERE project_id = %s
-                """,
+                f"SELECT {self._COLUMNS} FROM metric_definitions "
+                "WHERE project_id = %s",
                 (project_id,),
             ).fetchall()
         return [self._row_to_definition(r) for r in rows]
 
-    def update_definition(self, project_id: str, metric_id: str, updates: dict) -> MetricDefinition:
-        updates["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        set_clauses = ", ".join(f"{key} = %s" for key in updates)
-        values = list(updates.values()) + [project_id, metric_id]
+    def list_for_source(self, project_id: str, source_id: str) -> list[MetricDefinition]:
+        with self.pool.connection() as conn:
+            rows = conn.execute(
+                f"SELECT {self._COLUMNS} FROM metric_definitions "
+                "WHERE project_id = %s AND source_id = %s",
+                (project_id, source_id),
+            ).fetchall()
+        return [self._row_to_definition(r) for r in rows]
+
+    def get_by_builtin_key(
+        self, project_id: str, source_id: str, builtin_key: str,
+    ) -> MetricDefinition | None:
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                f"SELECT {self._COLUMNS} FROM metric_definitions "
+                "WHERE project_id = %s AND source_id = %s AND builtin_key = %s",
+                (project_id, source_id, builtin_key),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_definition(row)
+
+    def update_definition(
+        self, project_id: str, metric_id: str, updates: MetricDefinitionUpdate,
+    ) -> MetricDefinition:
+        fields = updates.to_db_fields()
+        fields["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        set_clauses = ", ".join(f"{key} = %s" for key in fields)
+        values = list(fields.values()) + [project_id, metric_id]
         with self.pool.connection() as conn:
             conn.execute(
                 f"UPDATE metric_definitions SET {set_clauses} WHERE project_id = %s AND id = %s",
@@ -219,15 +263,15 @@ class PostgresMetricStore(AbstractMetricStore):
         return self._row_to_result(row)
 
     def _row_to_definition(self, row: tuple) -> MetricDefinition:
-        raw_filters = row[8] if isinstance(row[8], list) else json.loads(row[8]) if isinstance(row[8], str) else row[8]
-        source_filters = [
-            SourceFilter(
+        raw_filters = row[12] if isinstance(row[12], list) else json.loads(row[12]) if isinstance(row[12], str) else row[12]
+        source_filters = []
+        from kpidebug.data.types import DataSourceType
+        for sf in raw_filters:
+            source_filters.append(SourceFilter(
                 source_type=DataSourceType(sf["source_type"]),
                 fields=sf.get("fields", []),
-            )
-            for sf in raw_filters
-        ]
-        raw_dims = row[9] if isinstance(row[9], list) else json.loads(row[9]) if isinstance(row[9], str) else row[9]
+            ))
+        raw_dims = row[13] if isinstance(row[13], list) else json.loads(row[13]) if isinstance(row[13], str) else row[13]
         return MetricDefinition(
             id=row[0],
             project_id=row[1],
@@ -235,12 +279,16 @@ class PostgresMetricStore(AbstractMetricStore):
             description=row[3],
             data_type=MetricDataType(row[4]),
             source=MetricSource(row[5]),
-            builtin_key=row[6],
-            computation=row[7],
+            source_id=row[6],
+            table=row[7],
+            builtin_key=row[8],
+            value_field=row[9],
+            aggregation=Aggregation(row[10]) if row[10] else Aggregation.SUM,
+            computation=row[11],
             source_filters=source_filters,
             dimensions=raw_dims,
-            created_at=row[10],
-            updated_at=row[11],
+            created_at=row[14],
+            updated_at=row[15],
         )
 
     def _row_to_result(self, row: tuple) -> MetricResult:

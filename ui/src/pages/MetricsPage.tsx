@@ -123,7 +123,6 @@ export default function MetricsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<MetricDescriptor | null>(null);
 
   const [groupBy, setGroupBy] = useState<string[]>([]);
@@ -153,19 +152,19 @@ export default function MetricsPage() {
     }
   }, [currentProject]);
 
-  const isPinned = (sourceId: string, metricKey: string): DashboardMetricEntry | undefined =>
-    pinnedMetrics.find((p) => p.source_id === sourceId && p.metric_key === metricKey);
+  const isPinned = (metricId: string): DashboardMetricEntry | undefined =>
+    pinnedMetrics.find((p) => p.metric_id === metricId);
 
-  const handleTogglePin = async (sourceId: string, metricKey: string) => {
+  const handleTogglePin = async (metricId: string) => {
     if (!currentProject) return;
-    const existing = isPinned(sourceId, metricKey);
+    const existing = isPinned(metricId);
     try {
       if (existing) {
         await removeDashboardMetric(currentProject.id, existing.id);
         setPinnedMetrics((prev) => prev.filter((p) => p.id !== existing.id));
         setSnackbar("Removed from dashboard");
       } else {
-        const entry = await addDashboardMetric(currentProject.id, sourceId, metricKey);
+        const entry = await addDashboardMetric(currentProject.id, metricId);
         setPinnedMetrics((prev) => [...prev, entry]);
         setSnackbar("Added to dashboard");
       }
@@ -200,7 +199,7 @@ export default function MetricsPage() {
   useEffect(() => { fetchSources(); fetchPinned(); }, [fetchSources, fetchPinned]);
 
   const handleCompute = useCallback(async () => {
-    if (!currentProject || !selectedMetric || !selectedSourceId) return;
+    if (!currentProject || !selectedMetric) return;
     setComputing(true);
     setComputeError(null);
     try {
@@ -219,9 +218,9 @@ export default function MetricsPage() {
 
       const res = await computeMetric(
         currentProject.id,
-        selectedSourceId,
-        selectedMetric.key,
+        selectedMetric.id,
         {
+          source_id: selectedMetric.source_id,
           group_by: requestGroupBy.length > 0 ? requestGroupBy : undefined,
           aggregation,
           filters: allFilters.length > 0 ? allFilters : undefined,
@@ -235,10 +234,9 @@ export default function MetricsPage() {
     } finally {
       setComputing(false);
     }
-  }, [currentProject, selectedMetric, selectedSourceId, groupBy, aggregation, filters, timeRange, viewMode, timeBucket]);
+  }, [currentProject, selectedMetric, groupBy, aggregation, filters, timeRange, viewMode, timeBucket]);
 
-  const handleMetricSelect = (sourceId: string, metric: MetricDescriptor) => {
-    setSelectedSourceId(sourceId);
+  const handleMetricSelect = (metric: MetricDescriptor) => {
     setSelectedMetric(metric);
     setGroupBy([]);
     setAggregation("sum");
@@ -310,12 +308,12 @@ export default function MetricsPage() {
                   {source.name}
                 </ListSubheader>
                 {metrics.map((metric) => {
-                  const pinned = isPinned(source.id, metric.key);
+                  const pinned = isPinned(metric.id);
                   return (
                     <ListItemButton
-                      key={metric.key}
-                      selected={selectedMetric?.key === metric.key && selectedSourceId === source.id}
-                      onClick={() => handleMetricSelect(source.id, metric)}
+                      key={metric.id}
+                      selected={selectedMetric?.id === metric.id}
+                      onClick={() => handleMetricSelect(metric)}
                       sx={{
                         py: 0.5, pl: 3, pr: 1, borderRadius: 0,
                         "&.Mui-selected": {
@@ -330,7 +328,7 @@ export default function MetricsPage() {
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleTogglePin(source.id, metric.key);
+                            handleTogglePin(metric.id);
                           }}
                           sx={{
                             p: 0.4,

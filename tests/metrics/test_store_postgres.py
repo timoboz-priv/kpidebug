@@ -36,8 +36,10 @@ class TestPostgresMetricStore:
             name="Revenue",
             description="Monthly revenue",
             data_type=MetricDataType.CURRENCY,
-            source=MetricSource.DATA_SOURCE,
-            source_filters=[SourceFilter(source_type=DataSourceType.STRIPE, fields=["amount"])],
+            source=MetricSource.EXPRESSION,
+            source_id="src1",
+            table="charges",
+            computation="sum('amount')",
             dimensions=["time"],
         )
 
@@ -53,9 +55,13 @@ class TestPostgresMetricStore:
     def test_get_definition_returns_definition(self):
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
+        # Columns: id, project_id, name, description, data_type, source,
+        #          source_id, table_name, builtin_key, value_field, aggregation,
+        #          computation, source_filters, dimensions, created_at, updated_at
         conn.execute.return_value.fetchone.return_value = (
             "m1", "p1", "Revenue", "Monthly revenue",
-            "currency", "data_source", "", "",
+            "currency", "expression", "src1", "charges",
+            "", "amount", "sum", "sum('amount')",
             [{"source_type": "stripe", "fields": ["amount"]}],
             ["time"],
             "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z",
@@ -66,6 +72,9 @@ class TestPostgresMetricStore:
         assert defn is not None
         assert defn.id == "m1"
         assert defn.data_type == MetricDataType.CURRENCY
+        assert defn.source == MetricSource.EXPRESSION
+        assert defn.source_id == "src1"
+        assert defn.table == "charges"
         assert len(defn.source_filters) == 1
 
     def test_get_definition_returns_none(self):
@@ -79,14 +88,56 @@ class TestPostgresMetricStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("m1", "p1", "Revenue", "", "number", "builtin", "", "", [], [], "", ""),
-            ("m2", "p1", "Users", "", "number", "builtin", "", "", [], [], "", ""),
+            ("m1", "p1", "Revenue", "", "number", "builtin",
+             "src1", "charges", "stripe.gross_revenue", "amount", "sum",
+             "", [], [], "", ""),
+            ("m2", "p1", "Users", "", "number", "builtin",
+             "src1", "customers", "stripe.customer_count", "id", "sum",
+             "", [], [], "", ""),
         ]
 
         defs = store.list_definitions("p1")
 
         assert len(defs) == 2
         assert defs[0].id == "m1"
+
+    def test_list_for_source(self):
+        store, pool = self._make_store()
+        conn = self._mock_connection(pool)
+        conn.execute.return_value.fetchall.return_value = [
+            ("m1", "p1", "Revenue", "", "number", "builtin",
+             "src1", "charges", "stripe.gross_revenue", "amount", "sum",
+             "", [], [], "", ""),
+        ]
+
+        defs = store.list_for_source("p1", "src1")
+
+        assert len(defs) == 1
+        query = conn.execute.call_args[0][0]
+        assert "source_id = %s" in query
+
+    def test_get_by_builtin_key(self):
+        store, pool = self._make_store()
+        conn = self._mock_connection(pool)
+        conn.execute.return_value.fetchone.return_value = (
+            "m1", "p1", "Revenue", "", "currency", "builtin",
+            "src1", "charges", "stripe.gross_revenue", "amount", "sum",
+            "", [], [], "", "",
+        )
+
+        defn = store.get_by_builtin_key("p1", "src1", "stripe.gross_revenue")
+
+        assert defn is not None
+        assert defn.builtin_key == "stripe.gross_revenue"
+        query = conn.execute.call_args[0][0]
+        assert "builtin_key = %s" in query
+
+    def test_get_by_builtin_key_returns_none(self):
+        store, pool = self._make_store()
+        conn = self._mock_connection(pool)
+        conn.execute.return_value.fetchone.return_value = None
+
+        assert store.get_by_builtin_key("p1", "src1", "nonexistent") is None
 
     def test_delete_definition(self):
         store, pool = self._make_store()
@@ -179,8 +230,6 @@ class TestPostgresMetricStore:
         calls = conn.execute.call_args_list
         assert any("CREATE TABLE IF NOT EXISTS metric_definitions" in str(c) for c in calls)
         assert any("CREATE TABLE IF NOT EXISTS metric_results" in str(c) for c in calls)
-        assert any("CREATE INDEX IF NOT EXISTS idx_metric_results_metric" in str(c) for c in calls)
-        assert any("CREATE INDEX IF NOT EXISTS idx_metric_results_computed_at" in str(c) for c in calls)
 
     def test_drop_tables(self):
         store, pool = self._make_store()

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
 
@@ -26,6 +26,7 @@ class TestPostgresDashboardStore:
         conn.execute.assert_called_once()
         sql = conn.execute.call_args[0][0]
         assert "CREATE TABLE IF NOT EXISTS dashboard_metrics" in sql
+        assert "metric_id" in sql
         assert "PRIMARY KEY (project_id, id)" in sql
 
     def test_add_metric(self):
@@ -33,11 +34,10 @@ class TestPostgresDashboardStore:
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchone.return_value = (2,)
 
-        result = store.add_metric("p1", "src1", "stripe.mrr")
+        result = store.add_metric("p1", "metric-uuid-123")
 
         assert result.project_id == "p1"
-        assert result.source_id == "src1"
-        assert result.metric_key == "stripe.mrr"
+        assert result.metric_id == "metric-uuid-123"
         assert result.id != ""
         assert result.position == 3
         assert result.added_at != ""
@@ -48,7 +48,7 @@ class TestPostgresDashboardStore:
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchone.return_value = (-1,)
 
-        result = store.add_metric("p1", "src1", "stripe.mrr")
+        result = store.add_metric("p1", "metric-uuid-123")
 
         assert result.position == 0
 
@@ -67,18 +67,18 @@ class TestPostgresDashboardStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("id1", "p1", "src1", "stripe.mrr", 0, "2026-01-01T00:00:00Z"),
-            ("id2", "p1", "src1", "stripe.gross_revenue", 1, "2026-01-01T00:00:00Z"),
+            ("id1", "p1", "metric-1", 0, "2026-01-01T00:00:00Z"),
+            ("id2", "p1", "metric-2", 1, "2026-01-01T00:00:00Z"),
         ]
 
         results = store.list_metrics("p1")
 
         assert len(results) == 2
         assert results[0].id == "id1"
-        assert results[0].metric_key == "stripe.mrr"
+        assert results[0].metric_id == "metric-1"
         assert results[0].position == 0
         assert results[1].id == "id2"
-        assert results[1].metric_key == "stripe.gross_revenue"
+        assert results[1].metric_id == "metric-2"
         assert results[1].position == 1
 
     def test_list_metrics_empty(self):

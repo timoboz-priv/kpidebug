@@ -4,7 +4,9 @@ from typing import Callable
 
 from dataclasses_json import dataclass_json
 
-from kpidebug.data.types import TableFilter
+from kpidebug.data.types import Row
+from kpidebug.metrics.filters import apply_filters
+from kpidebug.metrics.types import Aggregation, MetricComputeInput, TimeBucket
 
 
 @dataclass_json
@@ -24,12 +26,16 @@ class BuiltinMetric:
     data_type: str = "number"
     value_field: str = ""
     dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
-    row_filter: Callable[[dict], bool] | None = dataclass_field(
+    row_filter: Callable[[Row], bool] | None = dataclass_field(
         default=None, repr=False,
     )
-    compute_fn: Callable[[list[dict]], float] | None = dataclass_field(
+    compute_fn: Callable[[list[Row]], float] | None = dataclass_field(
         default=None, repr=False,
     )
+
+    @property
+    def id(self) -> str:
+        return f"builtin:{self.key}"
 
 
 @dataclass_json
@@ -39,67 +45,37 @@ class MetricComputeResult:
     groups: dict[str, str] = dataclass_field(default_factory=dict)
 
 
-AGGREGATION_FUNCTIONS = {"sum", "avg", "min", "max", "count"}
-
-
-def _aggregate(rows: list[dict], field: str, method: str) -> float:
-    if method == "count":
+def _aggregate(rows: list[Row], field: str, method: Aggregation) -> float:
+    if method == Aggregation.COUNT:
         return float(len(rows))
     values = [float(r.get(field, 0) or 0) for r in rows]
     if not values:
         return 0.0
-    if method == "sum":
+    if method == Aggregation.SUM:
         return sum(values)
-    elif method == "avg":
+    elif method == Aggregation.AVG:
         return sum(values) / len(values)
-    elif method == "min":
+    elif method == Aggregation.MIN:
         return min(values)
-    elif method == "max":
+    elif method == Aggregation.MAX:
         return max(values)
     return 0.0
 
 
-def _matches_filter(row: dict, f: TableFilter) -> bool:
-    val = str(row.get(f.column, ""))
-    target = f.value
-    if f.operator == "eq":
-        return val == target
-    elif f.operator == "neq":
-        return val != target
-    elif f.operator == "contains":
-        return target.lower() in val.lower()
-    elif f.operator in ("gt", "gte", "lt", "lte"):
-        try:
-            fval, ftarget = float(val), float(target)
-        except ValueError:
-            fval, ftarget = None, None
-        if fval is not None and ftarget is not None:
-            if f.operator == "gt":
-                return fval > ftarget
-            elif f.operator == "gte":
-                return fval >= ftarget
-            elif f.operator == "lt":
-                return fval < ftarget
-            elif f.operator == "lte":
-                return fval <= ftarget
-        return val > target if f.operator in ("gt", "gte") else val < target
-    return True
-
-
-def _truncate_to_bucket(iso_str: str, bucket: str) -> str:
+def _truncate_to_bucket(iso_str: str, bucket: TimeBucket) -> str:
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return iso_str
-    if bucket == "day":
+    if bucket == TimeBucket.DAY:
         return dt.strftime("%Y-%m-%d")
-    elif bucket == "week":
+    elif bucket == TimeBucket.WEEK:
         from datetime import timedelta
         start = dt - timedelta(days=dt.weekday())
         return start.strftime("%Y-%m-%d")
-    elif bucket == "month":
+    elif bucket == TimeBucket.MONTH:
         return dt.strftime("%Y-%m")
-    elif bucket == "year":
+    elif bucket == TimeBucket.YEAR:
         return dt.strftime("%Y")
     return iso_str
 
@@ -122,28 +98,28 @@ class BuiltinMetricRegistry:
     def list_for_table(self, table: str) -> list[BuiltinMetric]:
         return [m for m in self._metrics.values() if m.table == table]
 
+    def list_for_tables(self, table_keys: set[str]) -> list[BuiltinMetric]:
+        return [m for m in self._metrics.values() if m.table in table_keys]
+
     def compute(
         self,
         key: str,
-        rows: list[dict],
-        group_by: list[str] | None = None,
-        aggregation: str = "sum",
-        filters: list[TableFilter] | None = None,
-        time_column: str | None = None,
-        time_bucket: str | None = None,
+        compute_input: MetricComputeInput,
     ) -> list[MetricComputeResult]:
         metric = self._metrics.get(key)
         if metric is None:
             raise ValueError(f"Unknown metric: {key}")
 
+        rows = list(compute_input.rows)
+
         if metric.row_filter:
             rows = [r for r in rows if metric.row_filter(r)]
 
-        if filters:
-            for f in filters:
-                rows = [r for r in rows if _matches_filter(r, f)]
+        rows = apply_filters(rows, compute_input.filters)
 
-        dims = list(group_by or [])
+        dims = list(compute_input.group_by)
+        time_column = compute_input.time_column
+        time_bucket = compute_input.time_bucket
         if time_column and time_bucket:
             for row in rows:
                 raw = row.get(time_column, "")
@@ -154,6 +130,8 @@ class BuiltinMetricRegistry:
             if time_dim_key not in dims:
                 dims.insert(0, time_dim_key)
 
+        aggregation = compute_input.aggregation
+
         if not dims:
             value = (
                 metric.compute_fn(rows)
@@ -162,7 +140,7 @@ class BuiltinMetricRegistry:
             )
             return [MetricComputeResult(value=value)]
 
-        groups: dict[tuple[tuple[str, str], ...], list[dict]] = {}
+        groups: dict[tuple[tuple[str, str], ...], list[Row]] = {}
         for row in rows:
             key_parts = tuple(
                 (d, str(row.get(d, ""))) for d in dims
@@ -178,7 +156,7 @@ class BuiltinMetricRegistry:
                     group_rows, metric.value_field, aggregation,
                 )
             )
-            group_dict = {}
+            group_dict: dict[str, str] = {}
             for dim_key, dim_val in group_key:
                 display_key = dim_key.replace(
                     f"_tb_{time_column}", time_column,

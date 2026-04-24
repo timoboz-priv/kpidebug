@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from kpidebug.data.types import DataSource, TableDescriptor, TableQuery, TableResult
+from kpidebug.data.types import DataSource, Row, TableDescriptor, TableQuery, TableResult
 
 
 class DataSourceConnector(ABC):
@@ -28,7 +28,7 @@ class DataSourceConnector(ABC):
     def fetch_all_rows(
         self,
         table_key: str,
-    ) -> list[dict]:
+    ) -> list[Row]:
         ...
 
 

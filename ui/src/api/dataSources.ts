@@ -117,10 +117,13 @@ export interface MetricDimension {
 }
 
 export interface MetricDescriptor {
+  id: string;
   key: string;
   name: string;
   description: string;
   data_type: string;
+  source: string;
+  source_id: string;
   has_custom_compute: boolean;
   dimensions: MetricDimension[];
 }
@@ -131,6 +134,7 @@ export interface MetricComputeResult {
 }
 
 export interface MetricComputeRequest {
+  source_id?: string;
   group_by?: string[];
   aggregation?: string;
   filters?: TableFilter[];
@@ -146,23 +150,23 @@ export interface MetricComputeResponse {
 
 export async function listMetrics(
   projectId: string,
-  sourceId: string,
+  sourceId?: string,
 ): Promise<MetricDescriptor[]> {
+  const params = sourceId ? { params: { source_id: sourceId } } : {};
   const response = await apiClient.get<MetricDescriptor[]>(
-    `/api/projects/${projectId}/data-sources/${sourceId}/metrics`,
-    { headers: { "X-Project-Id": projectId } },
+    `/api/projects/${projectId}/metrics`,
+    { headers: { "X-Project-Id": projectId }, ...params },
   );
   return response.data;
 }
 
 export async function computeMetric(
   projectId: string,
-  sourceId: string,
-  metricKey: string,
+  metricId: string,
   request: MetricComputeRequest,
 ): Promise<MetricComputeResponse> {
   const response = await apiClient.post<MetricComputeResponse>(
-    `/api/projects/${projectId}/data-sources/${sourceId}/metrics/${metricKey}/compute`,
+    `/api/projects/${projectId}/metrics/${metricId}/compute`,
     request,
     { headers: { "X-Project-Id": projectId } },
   );
@@ -211,8 +215,7 @@ export async function queryTable(
 export interface DashboardMetricEntry {
   id: string;
   project_id: string;
-  source_id: string;
-  metric_key: string;
+  metric_id: string;
   position: number;
   added_at: string;
 }
@@ -224,6 +227,7 @@ export interface SparklinePoint {
 
 export interface DashboardMetricData {
   dashboard_metric_id: string;
+  metric_id: string;
   source_id: string;
   source_name: string;
   metric_key: string;
@@ -250,12 +254,11 @@ export async function listDashboardMetrics(
 
 export async function addDashboardMetric(
   projectId: string,
-  sourceId: string,
-  metricKey: string,
+  metricId: string,
 ): Promise<DashboardMetricEntry> {
   const response = await apiClient.post<DashboardMetricEntry>(
     `/api/projects/${projectId}/dashboard/metrics`,
-    { source_id: sourceId, metric_key: metricKey },
+    { metric_id: metricId },
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;

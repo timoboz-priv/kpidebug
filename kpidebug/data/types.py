@@ -1,7 +1,11 @@
 from dataclasses import dataclass, field as dataclass_field
 from enum import Enum
+from typing import Union
 
 from dataclasses_json import dataclass_json
+
+RowValue = Union[str, int, float, bool, None]
+Row = dict[str, RowValue]
 
 
 class DataSourceType(str, Enum):
@@ -64,7 +68,7 @@ class TableQuery:
 @dataclass_json
 @dataclass
 class TableResult:
-    rows: list[dict] = dataclass_field(default_factory=list)
+    rows: list[Row] = dataclass_field(default_factory=list)
     total_count: int = 0
 
 

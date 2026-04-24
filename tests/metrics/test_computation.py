@@ -1,17 +1,13 @@
 import pytest
 
-from kpidebug.data.types import DataSourceType
-from kpidebug.metrics.types import DataRecord
 from kpidebug.metrics.computation import ComputationError, evaluate, validate
 
 
-def _make_records() -> list[DataRecord]:
+def _make_rows() -> list[dict]:
     return [
-        DataRecord(field="revenue", value=100.0, source_type=DataSourceType.STRIPE),
-        DataRecord(field="revenue", value=200.0, source_type=DataSourceType.STRIPE),
-        DataRecord(field="revenue", value=50.0, source_type=DataSourceType.STRIPE),
-        DataRecord(field="transactions", value=10.0, source_type=DataSourceType.STRIPE),
-        DataRecord(field="transactions", value=5.0, source_type=DataSourceType.STRIPE),
+        {"revenue": 100.0, "transactions": 10.0},
+        {"revenue": 200.0, "transactions": 5.0},
+        {"revenue": 50.0},
     ]
 
 
@@ -48,48 +44,48 @@ class TestValidation:
 
 class TestEvaluate:
     def test_sum(self):
-        records = _make_records()
-        assert evaluate("sum('revenue')", records) == 350.0
+        rows = _make_rows()
+        assert evaluate("sum('revenue')", rows) == 350.0
 
     def test_count(self):
-        records = _make_records()
-        assert evaluate("count('revenue')", records) == 3.0
+        rows = _make_rows()
+        assert evaluate("count('revenue')", rows) == 3.0
 
     def test_avg(self):
-        records = _make_records()
-        result = evaluate("avg('revenue')", records)
+        rows = _make_rows()
+        result = evaluate("avg('revenue')", rows)
         assert abs(result - 116.6666666) < 0.001
 
     def test_min_val(self):
-        records = _make_records()
-        assert evaluate("min_val('revenue')", records) == 50.0
+        rows = _make_rows()
+        assert evaluate("min_val('revenue')", rows) == 50.0
 
     def test_max_val(self):
-        records = _make_records()
-        assert evaluate("max_val('revenue')", records) == 200.0
+        rows = _make_rows()
+        assert evaluate("max_val('revenue')", rows) == 200.0
 
     def test_ratio(self):
-        records = _make_records()
-        assert evaluate("ratio('revenue', 'transactions')", records) == 350.0 / 15.0
+        rows = _make_rows()
+        assert evaluate("ratio('revenue', 'transactions')", rows) == 350.0 / 15.0
 
     def test_arithmetic_expression(self):
-        records = _make_records()
-        result = evaluate("sum('revenue') / count('transactions')", records)
+        rows = _make_rows()
+        result = evaluate("sum('revenue') / count('transactions')", rows)
         assert result == 350.0 / 2.0
 
     def test_numeric_literal(self):
-        records = _make_records()
-        result = evaluate("sum('revenue') * 100 / sum('transactions')", records)
+        rows = _make_rows()
+        result = evaluate("sum('revenue') * 100 / sum('transactions')", rows)
         assert abs(result - 350.0 * 100 / 15.0) < 0.001
 
     def test_unary_negation(self):
-        records = _make_records()
-        result = evaluate("-sum('revenue')", records)
+        rows = _make_rows()
+        result = evaluate("-sum('revenue')", rows)
         assert result == -350.0
 
     def test_division_by_zero_returns_zero(self):
-        records = [DataRecord(field="a", value=10.0)]
-        result = evaluate("sum('a') / sum('b')", records)
+        rows = [{"a": 10.0}]
+        result = evaluate("sum('a') / sum('b')", rows)
         assert result == 0.0
 
     def test_empty_records(self):

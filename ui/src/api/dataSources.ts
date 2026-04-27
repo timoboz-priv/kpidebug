@@ -122,10 +122,6 @@ export interface MetricDescriptor {
   name: string;
   description: string;
   data_type: string;
-  source: string;
-  source_id: string;
-  time_column: string;
-  has_custom_compute: boolean;
   dimensions: MetricDimension[];
 }
 
@@ -135,7 +131,6 @@ export interface MetricComputeResult {
 }
 
 export interface MetricComputeRequest {
-  source_id?: string;
   group_by?: string[];
   aggregation?: string;
   filters?: TableFilter[];
@@ -237,6 +232,9 @@ export interface DashboardMetricData {
   data_type: string;
   current_value: number;
   sparkline: SparklinePoint[];
+  change_1d: number;
+  change_3d: number;
+  change_7d: number;
 }
 
 export interface DashboardComputeResponse {
@@ -277,12 +275,20 @@ export async function removeDashboardMetric(
 
 export async function computeDashboardMetrics(
   projectId: string,
-  periodDays: number,
 ): Promise<DashboardComputeResponse> {
-  const response = await apiClient.post<DashboardComputeResponse>(
+  const response = await apiClient.get<DashboardComputeResponse>(
     `/api/projects/${projectId}/dashboard/metrics/compute`,
-    { period_days: periodDays },
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;
+}
+
+export async function processProject(
+  projectId: string,
+): Promise<void> {
+  await apiClient.post(
+    `/api/projects/${projectId}/process`,
+    {},
+    { headers: { "X-Project-Id": projectId } },
+  );
 }

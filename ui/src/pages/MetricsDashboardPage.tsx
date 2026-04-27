@@ -4,9 +4,6 @@ import {
   Typography,
   Card,
   CardContent,
-  FormControl,
-  Select,
-  MenuItem,
   CircularProgress,
   Alert,
   IconButton,
@@ -20,6 +17,7 @@ import {
   Search as SearchIcon,
   BugReport as IssueIcon,
   Explore as ExploreIcon,
+  Refresh as RefreshIcon,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -32,13 +30,8 @@ import {
   DashboardMetricData,
   computeDashboardMetrics,
   removeDashboardMetric,
+  processProject,
 } from "../api/dataSources";
-
-const PERIOD_OPTIONS = [
-  { value: 7, label: "Last 7 days" },
-  { value: 30, label: "Last 30 days" },
-  { value: 90, label: "Last 90 days" },
-];
 
 function formatMetricValue(value: number, dataType: string): string {
   if (dataType === "percent") {
@@ -56,13 +49,26 @@ function formatMetricValue(value: number, dataType: string): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatChange(change: number): string {
+  const pct = (change * 100).toFixed(1);
+  if (change > 0) return `+${pct}%`;
+  if (change < 0) return `${pct}%`;
+  return "0.0%";
+}
+
+function changeColor(change: number): string {
+  if (change > 0) return "#2e7d32";
+  if (change < 0) return "#c62828";
+  return "#616161";
+}
+
 export default function MetricsDashboardPage() {
   const { currentProject } = useProject();
   const navigate = useNavigate();
 
-  const [periodDays, setPeriodDays] = useState(30);
   const [metrics, setMetrics] = useState<DashboardMetricData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMetrics = useCallback(async () => {
@@ -70,16 +76,30 @@ export default function MetricsDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await computeDashboardMetrics(currentProject.id, periodDays);
+      const res = await computeDashboardMetrics(currentProject.id);
       setMetrics(res.metrics);
     } catch {
       setError("Failed to load dashboard metrics");
     } finally {
       setLoading(false);
     }
-  }, [currentProject, periodDays]);
+  }, [currentProject]);
 
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
+
+  const handleRefresh = async () => {
+    if (!currentProject) return;
+    setProcessing(true);
+    setError(null);
+    try {
+      await processProject(currentProject.id);
+      await fetchMetrics();
+    } catch {
+      setError("Failed to refresh data");
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handleRemove = async (dashboardMetricId: string) => {
     if (!currentProject) return;
@@ -99,16 +119,15 @@ export default function MetricsDashboardPage() {
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
         <Typography variant="h4">Metrics</Typography>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select
-              value={periodDays}
-              onChange={(e) => setPeriodDays(e.target.value as number)}
-            >
-              {PERIOD_OPTIONS.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={processing ? <CircularProgress size={16} /> : <RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={processing}
+          >
+            {processing ? "Processing..." : "Refresh Data"}
+          </Button>
           <Button
             variant="outlined"
             size="small"
@@ -158,7 +177,6 @@ export default function MetricsDashboardPage() {
             <MetricTile
               key={m.dashboard_metric_id}
               metric={m}
-              periodDays={periodDays}
               onRemove={() => handleRemove(m.dashboard_metric_id)}
             />
           ))}
@@ -210,24 +228,11 @@ export default function MetricsDashboardPage() {
   );
 }
 
-function buildDateRange(periodDays: number): string[] {
-  const dates: string[] = [];
-  const now = new Date();
-  for (let i = periodDays - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().slice(0, 10));
-  }
-  return dates;
-}
-
 function MetricTile({
   metric,
-  periodDays,
   onRemove,
 }: {
   metric: DashboardMetricData;
-  periodDays: number;
   onRemove: () => void;
 }) {
   const valueByDate = new Map(
@@ -236,7 +241,7 @@ function MetricTile({
       metric.data_type === "currency" ? pt.value / 100 : pt.value,
     ]),
   );
-  const dateRange = buildDateRange(periodDays);
+  const dateRange = metric.sparkline.map((pt) => pt.date);
   const sparklineData = dateRange.map((date) => ({
     date,
     value: valueByDate.get(date) ?? 0,
@@ -280,16 +285,23 @@ function MetricTile({
             color: "text.secondary",
           }}
         >
-          {metric.source_name} &middot; {metric.name}
+          {metric.source_name ? `${metric.source_name} · ` : ""}{metric.name}
         </Typography>
 
         {/* Current value */}
         <Typography
           variant="h4"
-          sx={{ fontWeight: 700, fontFamily: "monospace", mb: 1 }}
+          sx={{ fontWeight: 700, fontFamily: "monospace", mb: 0.5 }}
         >
           {formatMetricValue(metric.current_value, metric.data_type)}
         </Typography>
+
+        {/* Change badges */}
+        <Box sx={{ display: "flex", gap: 1.5, mb: 1 }}>
+          <ChangeBadge label="1D" value={metric.change_1d} />
+          <ChangeBadge label="3D" value={metric.change_3d} />
+          <ChangeBadge label="7D" value={metric.change_7d} />
+        </Box>
 
         {/* Sparkline */}
         <Box sx={{ mx: -1 }}>
@@ -315,5 +327,32 @@ function MetricTile({
         </Box>
       </CardContent>
     </Card>
+  );
+}
+
+function ChangeBadge({ label, value }: { label: string; value: number }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.3 }}>
+      <Typography
+        sx={{
+          fontSize: "0.65rem",
+          fontWeight: 600,
+          color: "text.disabled",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: "0.75rem",
+          fontWeight: 600,
+          color: changeColor(value),
+          fontFamily: "monospace",
+        }}
+      >
+        {formatChange(value)}
+      </Typography>
+    </Box>
   );
 }

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from kpidebug.metrics.types import DashboardMetric
+from kpidebug.metrics.types import DashboardMetric, MetricSnapshot
 
 
 class AbstractDashboardStore(ABC):
@@ -14,4 +14,8 @@ class AbstractDashboardStore(ABC):
 
     @abstractmethod
     def list_metrics(self, project_id: str) -> list[DashboardMetric]:
+        ...
+
+    @abstractmethod
+    def store_snapshot(self, project_id: str, metric_id: str, snapshot: MetricSnapshot) -> None:
         ...

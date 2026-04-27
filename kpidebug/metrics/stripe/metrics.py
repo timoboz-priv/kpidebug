@@ -1,171 +1,252 @@
-from kpidebug.data.types import Row
-from kpidebug.metrics.builtin_metrics import (
-    BuiltinMetric,
-    MetricDimension,
-    builtin_registry,
-)
+from kpidebug.data.types import Aggregation, TableFilter
+from kpidebug.metrics.context import MetricContext
+from kpidebug.metrics.registry import register
+from kpidebug.metrics.types import Metric, MetricDataType, MetricResult, MetricDimension, apply_time_filter, parse_group_key
 
 
-def _sum_field(rows: list[Row], field: str) -> float:
-    return sum(float(r.get(field, 0) or 0) for r in rows)
+def _apply_filters(table, filters):
+    if not filters:
+        return table
+    for f in filters:
+        table = table.filter(f.column, f.operator, f.value)
+    return table
 
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.gross_revenue",
-    name="Gross Revenue",
-    description="Total charge amount for successful payments",
-    table="charges",
-    data_type="currency",
-    value_field="amount",
-    dimensions=[
+class GrossRevenueMetric(Metric):
+    id = "builtin:stripe.gross_revenue"
+    name = "Gross Revenue"
+    description = "Total charge amount for successful payments"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["charges"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="payment_method_type", name="Payment Method"),
         MetricDimension(key="card_brand", name="Card Brand"),
         MetricDimension(key="status", name="Status"),
         MetricDimension(key="disputed", name="Disputed"),
         MetricDimension(key="captured", name="Captured"),
-    ],
-    row_filter=lambda r: r.get("paid") is True or r.get("paid") == "true",
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.net_revenue",
-    name="Net Revenue",
-    description="Revenue after Stripe fees (from balance transactions)",
-    table="balance_transactions",
-    data_type="currency",
-    value_field="net",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("charges"), "created", days, date)
+        table = table.filter("paid", "eq", "true")
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("amount", aggregation).items())]
+        return [MetricResult(value=table.aggregate("amount", aggregation))]
+
+
+class NetRevenueMetric(Metric):
+    id = "builtin:stripe.net_revenue"
+    name = "Net Revenue"
+    description = "Revenue after Stripe fees (from balance transactions)"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["balance_transactions"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="reporting_category", name="Reporting Category"),
         MetricDimension(key="status", name="Status"),
         MetricDimension(key="type", name="Transaction Type"),
-    ],
-    row_filter=lambda r: r.get("type") == "charge",
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.customer_count",
-    name="Customer Count",
-    description="Total number of customers",
-    table="customers",
-    data_type="number",
-    value_field="id",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("balance_transactions"), "created", days, date)
+        table = table.filter("type", "eq", "charge")
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("net", aggregation).items())]
+        return [MetricResult(value=table.aggregate("net", aggregation))]
+
+
+class CustomerCountMetric(Metric):
+    id = "builtin:stripe.customer_count"
+    name = "Customer Count"
+    description = "Total number of customers"
+    data_type = MetricDataType.NUMBER
+    table_keys = ["customers"]
+    dimensions = [
         MetricDimension(key="country", name="Country"),
         MetricDimension(key="city", name="City"),
         MetricDimension(key="delinquent", name="Delinquent"),
         MetricDimension(key="tax_exempt", name="Tax Exempt"),
         MetricDimension(key="currency", name="Currency"),
-    ],
-    compute_fn=lambda rows: float(len(rows)),
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.mrr",
-    name="Monthly Recurring Revenue",
-    description="Sum of active subscription amounts (monthly basis)",
-    table="subscriptions",
-    data_type="currency",
-    value_field="amount",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("customers"), "created", days, date)
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("id", Aggregation.COUNT).items())]
+        return [MetricResult(value=float(table.count()))]
+
+
+class MrrMetric(Metric):
+    id = "builtin:stripe.mrr"
+    name = "Monthly Recurring Revenue"
+    description = "Sum of active subscription amounts (monthly basis)"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["subscriptions"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="interval", name="Billing Interval"),
         MetricDimension(key="cancel_at_period_end", name="Canceling"),
-    ],
-    row_filter=lambda r: r.get("status") == "active",
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.refund_rate",
-    name="Refund Rate",
-    description="Percentage of charge amount that was refunded",
-    table="charges",
-    data_type="percent",
-    value_field="amount_refunded",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("subscriptions"), "created", days, date)
+        table = table.filter("status", "eq", "active")
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("amount", aggregation).items())]
+        return [MetricResult(value=table.aggregate("amount", aggregation))]
+
+
+class RefundRateMetric(Metric):
+    id = "builtin:stripe.refund_rate"
+    name = "Refund Rate"
+    description = "Percentage of charge amount that was refunded"
+    data_type = MetricDataType.PERCENT
+    table_keys = ["charges"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="payment_method_type", name="Payment Method"),
-    ],
-    compute_fn=lambda rows: (
-        (_sum_field(rows, "amount_refunded") / _sum_field(rows, "amount") * 100)
-        if _sum_field(rows, "amount") > 0 else 0.0
-    ),
-    row_filter=lambda r: r.get("paid") is True or r.get("paid") == "true",
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.total_fees",
-    name="Total Fees",
-    description="Total Stripe processing fees",
-    table="balance_transactions",
-    data_type="currency",
-    value_field="fee",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("charges"), "created", days, date)
+        table = table.filter("paid", "eq", "true")
+        table = _apply_filters(table, filters)
+        total = table.aggregate("amount", Aggregation.SUM)
+        refunded = table.aggregate("amount_refunded", Aggregation.SUM)
+        value = (refunded / total * 100) if total > 0 else 0.0
+        return [MetricResult(value=value)]
+
+
+class TotalFeesMetric(Metric):
+    id = "builtin:stripe.total_fees"
+    name = "Total Fees"
+    description = "Total Stripe processing fees"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["balance_transactions"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="type", name="Transaction Type"),
         MetricDimension(key="reporting_category", name="Reporting Category"),
-    ],
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.refund_volume",
-    name="Refund Volume",
-    description="Total amount refunded",
-    table="refunds",
-    data_type="currency",
-    value_field="amount",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("balance_transactions"), "created", days, date)
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("fee", aggregation).items())]
+        return [MetricResult(value=table.aggregate("fee", aggregation))]
+
+
+class RefundVolumeMetric(Metric):
+    id = "builtin:stripe.refund_volume"
+    name = "Refund Volume"
+    description = "Total amount refunded"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["refunds"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="reason", name="Reason"),
         MetricDimension(key="status", name="Status"),
-    ],
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.dispute_count",
-    name="Dispute Count",
-    description="Number of payment disputes and chargebacks",
-    table="disputes",
-    data_type="number",
-    value_field="id",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("refunds"), "created", days, date)
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("amount", aggregation).items())]
+        return [MetricResult(value=table.aggregate("amount", aggregation))]
+
+
+class DisputeCountMetric(Metric):
+    id = "builtin:stripe.dispute_count"
+    name = "Dispute Count"
+    description = "Number of payment disputes and chargebacks"
+    data_type = MetricDataType.NUMBER
+    table_keys = ["disputes"]
+    dimensions = [
         MetricDimension(key="reason", name="Reason"),
         MetricDimension(key="status", name="Status"),
         MetricDimension(key="currency", name="Currency"),
-    ],
-    compute_fn=lambda rows: float(len(rows)),
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.invoice_collection_rate",
-    name="Invoice Collection Rate",
-    description="Percentage of invoiced amounts that were paid",
-    table="invoices",
-    data_type="percent",
-    value_field="amount_paid",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("disputes"), "created", days, date)
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("id", Aggregation.COUNT).items())]
+        return [MetricResult(value=float(table.count()))]
+
+
+class InvoiceCollectionRateMetric(Metric):
+    id = "builtin:stripe.invoice_collection_rate"
+    name = "Invoice Collection Rate"
+    description = "Percentage of invoiced amounts that were paid"
+    data_type = MetricDataType.PERCENT
+    table_keys = ["invoices"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="status", name="Status"),
         MetricDimension(key="collection_method", name="Collection Method"),
-    ],
-    compute_fn=lambda rows: (
-        (_sum_field(rows, "amount_paid") / _sum_field(rows, "amount_due") * 100)
-        if _sum_field(rows, "amount_due") > 0 else 0.0
-    ),
-))
+    ]
 
-builtin_registry.register(BuiltinMetric(
-    key="stripe.payout_volume",
-    name="Payout Volume",
-    description="Total amount paid out to your bank",
-    table="payouts",
-    data_type="currency",
-    value_field="amount",
-    dimensions=[
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("invoices"), "created", days, date)
+        table = _apply_filters(table, filters)
+        paid = table.aggregate("amount_paid", Aggregation.SUM)
+        due = table.aggregate("amount_due", Aggregation.SUM)
+        value = (paid / due * 100) if due > 0 else 0.0
+        return [MetricResult(value=value)]
+
+
+class PayoutVolumeMetric(Metric):
+    id = "builtin:stripe.payout_volume"
+    name = "Payout Volume"
+    description = "Total amount paid out to your bank"
+    data_type = MetricDataType.CURRENCY
+    table_keys = ["payouts"]
+    dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="status", name="Status"),
         MetricDimension(key="type", name="Payout Type"),
         MetricDimension(key="method", name="Payout Method"),
-    ],
-))
+    ]
+
+    def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
+        table = apply_time_filter(ctx.table("payouts"), "created", days, date)
+        table = _apply_filters(table, filters)
+        if dimensions:
+            grouped = table.group_by(*dimensions)
+            return [MetricResult(value=v, groups=parse_group_key(k, dimensions))
+                    for k, v in sorted(grouped.aggregate("amount", aggregation).items())]
+        return [MetricResult(value=table.aggregate("amount", aggregation))]
+
+
+register(GrossRevenueMetric())
+register(NetRevenueMetric())
+register(CustomerCountMetric())
+register(MrrMetric())
+register(RefundRateMetric())
+register(TotalFeesMetric())
+register(RefundVolumeMetric())
+register(DisputeCountMetric())
+register(InvoiceCollectionRateMetric())
+register(PayoutVolumeMetric())

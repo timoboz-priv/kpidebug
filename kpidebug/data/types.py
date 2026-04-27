@@ -25,6 +25,29 @@ class ColumnType(str, Enum):
     BOOLEAN = "boolean"
 
 
+class FilterOperator(str, Enum):
+    EQ = "eq"
+    NEQ = "neq"
+    CONTAINS = "contains"
+    GT = "gt"
+    GTE = "gte"
+    LT = "lt"
+    LTE = "lte"
+
+
+class SortOrder(str, Enum):
+    ASC = "asc"
+    DESC = "desc"
+
+
+class Aggregation(str, Enum):
+    SUM = "sum"
+    AVG = "avg"
+    MIN = "min"
+    MAX = "max"
+    COUNT = "count"
+
+
 @dataclass_json
 @dataclass
 class TableColumn:
@@ -51,7 +74,7 @@ class TableDescriptor:
 @dataclass
 class TableFilter:
     column: str = ""
-    operator: str = "eq"
+    operator: FilterOperator = FilterOperator.EQ
     value: str = ""
 
 
@@ -60,7 +83,7 @@ class TableFilter:
 class TableQuery:
     filters: list[TableFilter] = dataclass_field(default_factory=list)
     sort_by: str | None = None
-    sort_order: str = "asc"
+    sort_order: SortOrder = SortOrder.ASC
     limit: int = 100
     offset: int = 0
 

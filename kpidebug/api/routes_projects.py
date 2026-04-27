@@ -8,8 +8,18 @@ from kpidebug.api.auth import (
     get_current_user,
     require_project_role,
 )
-from kpidebug.api.stores import get_artifact_store, get_project_store, get_user_store
+from kpidebug.api.stores import (
+    get_artifact_store,
+    get_dashboard_store,
+    get_data_source_store,
+    get_metric_store,
+    get_project_store,
+    get_user_store,
+)
+from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.management.artifact_store import AbstractArtifactStore
+from kpidebug.metrics.dashboard_store import AbstractDashboardStore
+from kpidebug.metrics.metric_store import AbstractMetricStore
 from kpidebug.management.types import (
     AddMemberRequest,
     ArtifactType,
@@ -165,6 +175,24 @@ def generate_project_summary(
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     return project_store.update(project_id, {"summary": summary})
+
+
+@router.post("/{project_id}/process")
+def process_project(
+    project_id: str,
+    _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+    dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
+    metric_store: AbstractMetricStore = Depends(get_metric_store),
+) -> dict[str, bool]:
+    from kpidebug.metrics.processor import process_all
+    process_all(
+        project_id=project_id,
+        data_source_store=data_source_store,
+        dashboard_store=dashboard_store,
+        metric_store=metric_store,
+    )
+    return {"ok": True}
 
 
 def _require_membership(project_store: AbstractProjectStore, project_id: str, user_id: str) -> ProjectMember:

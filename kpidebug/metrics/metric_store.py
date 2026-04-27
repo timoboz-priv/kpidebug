@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from kpidebug.metrics.types import MetricDefinition, MetricDefinitionUpdate, MetricResult
+from kpidebug.metrics.types import MetricDefinition, MetricDefinitionUpdate, StoredMetricResult
 
 
 class AbstractMetricStore(ABC):
@@ -17,16 +17,6 @@ class AbstractMetricStore(ABC):
         ...
 
     @abstractmethod
-    def list_for_source(self, project_id: str, source_id: str) -> list[MetricDefinition]:
-        ...
-
-    @abstractmethod
-    def get_by_builtin_key(
-        self, project_id: str, source_id: str, builtin_key: str,
-    ) -> MetricDefinition | None:
-        ...
-
-    @abstractmethod
     def update_definition(
         self, project_id: str, metric_id: str, updates: MetricDefinitionUpdate,
     ) -> MetricDefinition:
@@ -37,7 +27,7 @@ class AbstractMetricStore(ABC):
         ...
 
     @abstractmethod
-    def store_results(self, results: list[MetricResult]) -> None:
+    def store_results(self, results: list[StoredMetricResult]) -> None:
         ...
 
     @abstractmethod
@@ -47,9 +37,9 @@ class AbstractMetricStore(ABC):
         metric_id: str,
         start_time: str | None = None,
         end_time: str | None = None,
-    ) -> list[MetricResult]:
+    ) -> list[StoredMetricResult]:
         ...
 
     @abstractmethod
-    def get_latest_result(self, project_id: str, metric_id: str) -> MetricResult | None:
+    def get_latest_result(self, project_id: str, metric_id: str) -> StoredMetricResult | None:
         ...

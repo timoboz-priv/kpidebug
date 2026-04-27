@@ -202,7 +202,7 @@ export default function MetricsPage() {
     setComputing(true);
     setComputeError(null);
     try {
-      const timeCol = selectedMetric.time_column || "created";
+      const timeCol = "created";
       const timeFilters = timeRangeToFilters(timeCol, timeRange);
       const allFilters: TableFilter[] = [
         ...filters.filter((f) => f.column && f.value).map((f) => ({
@@ -220,7 +220,6 @@ export default function MetricsPage() {
         currentProject.id,
         selectedMetric.id,
         {
-          source_id: selectedMetric.source_id,
           group_by: requestGroupBy.length > 0 ? requestGroupBy : undefined,
           aggregation,
           filters: allFilters.length > 0 ? allFilters : undefined,
@@ -390,16 +389,14 @@ export default function MetricsPage() {
                     />
                   ))}
                   <Box sx={{ flex: 1 }} />
-                  {!selectedMetric.has_custom_compute && (
-                    <FormControl size="small" sx={{ minWidth: 120 }}>
-                      <InputLabel>Aggregation</InputLabel>
-                      <Select value={aggregation} label="Aggregation" onChange={(e) => setAggregation(e.target.value)}>
-                        {AGGREGATIONS.map((a) => (
-                          <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel>Aggregation</InputLabel>
+                    <Select value={aggregation} label="Aggregation" onChange={(e) => setAggregation(e.target.value)}>
+                      {AGGREGATIONS.map((a) => (
+                        <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Box>
 
                 {/* Row 2: Time range + view toggle + filters + run */}

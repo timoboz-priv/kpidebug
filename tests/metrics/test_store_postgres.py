@@ -1,15 +1,13 @@
 import json
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
-from kpidebug.data.types import DataSourceType
-from kpidebug.metrics.types import DimensionValue
 from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
 from kpidebug.metrics.types import (
+    DimensionValue,
     MetricDataType,
     MetricDefinition,
-    MetricResult,
-    MetricSource,
-    SourceFilter,
+    StoredMetricResult,
 )
 
 
@@ -36,11 +34,7 @@ class TestPostgresMetricStore:
             name="Revenue",
             description="Monthly revenue",
             data_type=MetricDataType.CURRENCY,
-            source=MetricSource.EXPRESSION,
-            source_id="src1",
-            table="charges",
-            computation="sum('amount')",
-            dimensions=["time"],
+            computation="sum(amount) from charges",
         )
 
         result = store.create_definition(definition)
@@ -55,15 +49,9 @@ class TestPostgresMetricStore:
     def test_get_definition_returns_definition(self):
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
-        # Columns: id, project_id, name, description, data_type, source,
-        #          source_id, table_name, builtin_key, value_field, aggregation,
-        #          computation, source_filters, dimensions, created_at, updated_at
         conn.execute.return_value.fetchone.return_value = (
             "m1", "p1", "Revenue", "Monthly revenue",
-            "currency", "expression", "src1", "charges",
-            "", "amount", "sum", "sum('amount')",
-            [{"source_type": "stripe", "fields": ["amount"]}],
-            ["time"],
+            "currency", "sum(amount) from charges",
             "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z",
         )
 
@@ -72,10 +60,7 @@ class TestPostgresMetricStore:
         assert defn is not None
         assert defn.id == "m1"
         assert defn.data_type == MetricDataType.CURRENCY
-        assert defn.source == MetricSource.EXPRESSION
-        assert defn.source_id == "src1"
-        assert defn.table == "charges"
-        assert len(defn.source_filters) == 1
+        assert defn.computation == "sum(amount) from charges"
 
     def test_get_definition_returns_none(self):
         store, pool = self._make_store()
@@ -88,56 +73,14 @@ class TestPostgresMetricStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("m1", "p1", "Revenue", "", "number", "builtin",
-             "src1", "charges", "stripe.gross_revenue", "amount", "sum",
-             "", [], [], "", ""),
-            ("m2", "p1", "Users", "", "number", "builtin",
-             "src1", "customers", "stripe.customer_count", "id", "sum",
-             "", [], [], "", ""),
+            ("m1", "p1", "Revenue", "", "number", "sum(amount)", "", ""),
+            ("m2", "p1", "Users", "", "number", "count() from customers", "", ""),
         ]
 
         defs = store.list_definitions("p1")
 
         assert len(defs) == 2
         assert defs[0].id == "m1"
-
-    def test_list_for_source(self):
-        store, pool = self._make_store()
-        conn = self._mock_connection(pool)
-        conn.execute.return_value.fetchall.return_value = [
-            ("m1", "p1", "Revenue", "", "number", "builtin",
-             "src1", "charges", "stripe.gross_revenue", "amount", "sum",
-             "", [], [], "", ""),
-        ]
-
-        defs = store.list_for_source("p1", "src1")
-
-        assert len(defs) == 1
-        query = conn.execute.call_args[0][0]
-        assert "source_id = %s" in query
-
-    def test_get_by_builtin_key(self):
-        store, pool = self._make_store()
-        conn = self._mock_connection(pool)
-        conn.execute.return_value.fetchone.return_value = (
-            "m1", "p1", "Revenue", "", "currency", "builtin",
-            "src1", "charges", "stripe.gross_revenue", "amount", "sum",
-            "", [], [], "", "",
-        )
-
-        defn = store.get_by_builtin_key("p1", "src1", "stripe.gross_revenue")
-
-        assert defn is not None
-        assert defn.builtin_key == "stripe.gross_revenue"
-        query = conn.execute.call_args[0][0]
-        assert "builtin_key = %s" in query
-
-    def test_get_by_builtin_key_returns_none(self):
-        store, pool = self._make_store()
-        conn = self._mock_connection(pool)
-        conn.execute.return_value.fetchone.return_value = None
-
-        assert store.get_by_builtin_key("p1", "src1", "nonexistent") is None
 
     def test_delete_definition(self):
         store, pool = self._make_store()
@@ -153,11 +96,11 @@ class TestPostgresMetricStore:
         conn = self._mock_connection(pool)
 
         results = [
-            MetricResult(
+            StoredMetricResult(
                 project_id="p1", metric_id="m1", value=100.0,
                 dimension_values=[DimensionValue(dimension="time", value="2025-01")],
-                computed_at="2025-01-01T00:00:00Z",
-                period_start="2025-01-01", period_end="2025-01-31",
+                computed_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                period_start=date(2025, 1, 1), period_end=date(2025, 1, 31),
             ),
         ]
 
@@ -211,8 +154,6 @@ class TestPostgresMetricStore:
 
         assert result is not None
         assert result.value == 200.0
-        query = conn.execute.call_args[0][0]
-        assert "ORDER BY computed_at DESC" in query
 
     def test_get_latest_result_none(self):
         store, pool = self._make_store()

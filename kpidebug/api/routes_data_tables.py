@@ -90,19 +90,17 @@ def query_table(
             detail=f"Unknown table: {body.table}",
         )
 
-    query = TableQuery(
-        filters=body.filters,
-        sort_by=body.sort_by,
-        sort_order=body.sort_order,
-        limit=body.limit,
-        offset=body.offset,
-    )
-
     try:
-        result = connector.fetch_table_data(
-            table_key=body.table,
-            query=query,
+        data_table = connector.fetch_table(body.table)
+        query = TableQuery(
+            filters=body.filters,
+            sort_by=body.sort_by,
+            sort_order=body.sort_order,
+            limit=body.limit,
+            offset=body.offset,
         )
+        full_count = data_table.count()
+        result_table = data_table.query(query)
     except ConnectorError as e:
         raise HTTPException(
             status_code=400, detail=str(e)
@@ -111,6 +109,6 @@ def query_table(
     return TableQueryResponse(
         table=body.table,
         columns=table_desc.columns,
-        rows=result.rows,
-        total_count=result.total_count,
+        rows=result_table.to_rows(),
+        total_count=full_count,
     )

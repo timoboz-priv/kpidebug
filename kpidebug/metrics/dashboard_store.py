@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 
+from kpidebug.data.types import Aggregation
 from kpidebug.metrics.types import DashboardMetric, MetricSnapshot
 
 
 class AbstractDashboardStore(ABC):
     @abstractmethod
-    def add_metric(self, project_id: str, metric_id: str) -> DashboardMetric:
+    def add_metric(self, project_id: str, metric_id: str, aggregation: Aggregation = Aggregation.SUM) -> DashboardMetric:
         ...
 
     @abstractmethod

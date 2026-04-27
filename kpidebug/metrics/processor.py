@@ -63,8 +63,8 @@ def process_all(
                 failed += 1
                 continue
 
-            logger.debug("Computing series for metric '%s' (%s)", metric.name, dm.metric_id)
-            series = metric.compute_series(ctx, days=60)
+            logger.debug("Computing series for metric '%s' (%s, agg=%s)", metric.name, dm.metric_id, dm.aggregation.value)
+            series = metric.compute_series(ctx, aggregation=dm.aggregation, days=60)
             values = series.values
 
             snapshot = MetricSnapshot(

@@ -1,4 +1,4 @@
-from kpidebug.data.types import Aggregation, TableFilter
+from kpidebug.data.types import Aggregation, DataSourceType, TableFilter
 from kpidebug.metrics.context import MetricContext
 from kpidebug.metrics.registry import register
 from kpidebug.metrics.types import Metric, MetricDataType, MetricResult, MetricDimension, apply_time_filter, parse_group_key
@@ -72,6 +72,7 @@ def _make_sum(metric_id: str, metric_name: str, desc: str, table_key: str,
     m.name = metric_name
     m.description = desc
     m.data_type = dt
+    m.source_type = DataSourceType.GOOGLE_ANALYTICS
     m.table_keys = [table_key]
     m.dimensions = dims
     m._table_key = table_key
@@ -102,6 +103,8 @@ class BounceRateMetric(Metric):
     name = "Bounce Rate"
     description = "Weighted average bounce rate across sessions"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
@@ -121,6 +124,8 @@ class EngagementRateMetric(Metric):
     name = "Engagement Rate"
     description = "Weighted average engagement rate across sessions"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
@@ -140,6 +145,8 @@ class AvgSessionDurationMetric(Metric):
     name = "Avg Session Duration"
     description = "Weighted average session duration in seconds"
     data_type = MetricDataType.NUMBER
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
@@ -159,6 +166,8 @@ class ConversionRateMetric(Metric):
     name = "Conversion Rate"
     description = "Percentage of sessions that resulted in a conversion"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
@@ -188,6 +197,8 @@ class PageBounceRateMetric(Metric):
     name = "Page Bounce Rate"
     description = "Bounce rate broken down by page"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:pages"]
     dimensions = PAGE_DIMS
 
@@ -244,6 +255,8 @@ class RevenuePerConversionMetric(Metric):
     name = "Revenue per Conversion"
     description = "Average revenue generated per conversion event"
     data_type = MetricDataType.NUMBER
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["google_analytics:conversions"]
     dimensions = CONVERSION_DIMS
 

@@ -49,8 +49,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/metrics" element={<MetricsDashboardPage />} />
+        <Route path="/" element={<MetricsDashboardPage />} />
         <Route path="/metrics/explorer" element={<MetricsPage />} />
         <Route path="/data" element={<DataTablesPage />} />
         <Route path="/settings" element={<ProjectSettingsPage />} />

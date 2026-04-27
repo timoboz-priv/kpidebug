@@ -31,6 +31,10 @@ import {
   IconButton,
   Tooltip,
   Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -152,25 +156,42 @@ export default function MetricsPage() {
     }
   }, [currentProject]);
 
+  const [pinDialog, setPinDialog] = useState<{ metricId: string; defaultAgg: string } | null>(null);
+  const [pinAggregation, setPinAggregation] = useState("sum");
+
   const isPinned = (metricId: string): DashboardMetricEntry | undefined =>
     pinnedMetrics.find((p) => p.metric_id === metricId);
 
   const handleTogglePin = async (metricId: string) => {
     if (!currentProject) return;
     const existing = isPinned(metricId);
-    try {
-      if (existing) {
+    if (existing) {
+      try {
         await removeDashboardMetric(currentProject.id, existing.id);
         setPinnedMetrics((prev) => prev.filter((p) => p.id !== existing.id));
         setSnackbar("Removed from dashboard");
-      } else {
-        const entry = await addDashboardMetric(currentProject.id, metricId);
-        setPinnedMetrics((prev) => [...prev, entry]);
-        setSnackbar("Added to dashboard");
+      } catch {
+        setSnackbar("Failed to update dashboard");
       }
+    } else {
+      const allMetrics = sources.flatMap((s) => s.metrics);
+      const metric = allMetrics.find((m) => m.id === metricId);
+      const defaultAgg = metric?.default_aggregation || "sum";
+      setPinAggregation(defaultAgg);
+      setPinDialog({ metricId, defaultAgg });
+    }
+  };
+
+  const handleConfirmPin = async () => {
+    if (!currentProject || !pinDialog) return;
+    try {
+      const entry = await addDashboardMetric(currentProject.id, pinDialog.metricId, pinAggregation);
+      setPinnedMetrics((prev) => [...prev, entry]);
+      setSnackbar("Added to dashboard");
     } catch {
       setSnackbar("Failed to update dashboard");
     }
+    setPinDialog(null);
   };
 
   const fetchSources = useCallback(async () => {
@@ -503,6 +524,24 @@ export default function MetricsPage() {
           </>
         )}
       </Box>
+
+      <Dialog open={pinDialog !== null} onClose={() => setPinDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Add to Dashboard</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Aggregation</InputLabel>
+            <Select value={pinAggregation} label="Aggregation" onChange={(e) => setPinAggregation(e.target.value)}>
+              {AGGREGATIONS.map((a) => (
+                <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPinDialog(null)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmPin}>Add</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbar !== null}

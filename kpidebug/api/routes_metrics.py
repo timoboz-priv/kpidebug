@@ -37,6 +37,8 @@ class MetricDescriptor:
     name: str = ""
     description: str = ""
     data_type: MetricDataType = MetricDataType.NUMBER
+    source_type: str = "custom"
+    default_aggregation: str = "sum"
     dimensions: list[MetricDimension] = dataclass_field(default_factory=list)
 
 
@@ -95,6 +97,8 @@ def _to_descriptor(metric: Metric) -> MetricDescriptor:
         name=metric.name,
         description=metric.description,
         data_type=metric.data_type,
+        source_type=metric.source_type.value,
+        default_aggregation=metric.default_aggregation.value,
         dimensions=metric.dimensions,
     )
 
@@ -234,13 +238,13 @@ def compute_metric_endpoint(
     actual_agg = Aggregation.SUM if agg == Aggregation.AVG_DAILY else agg
 
     if agg == Aggregation.AVG_DAILY and not body.time_column:
+        from kpidebug.common.math import aggregate_values
         series = metric.compute_series(
             ctx, dimensions=dimensions, aggregation=Aggregation.SUM,
             filters=non_time_filters or None, days=days,
         )
         daily_values = [p.results[0].value if p.results else 0.0 for p in series.points]
-        avg_val = sum(daily_values) / len(daily_values) if daily_values else 0.0
-        results: list[MetricResult] = [MetricResult(value=avg_val)]
+        results: list[MetricResult] = [MetricResult(value=aggregate_values(daily_values, Aggregation.AVG_DAILY))]
     elif body.time_column and body.time_bucket:
         from kpidebug.metrics.types import TimeBucket
         try:

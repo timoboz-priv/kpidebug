@@ -69,8 +69,8 @@ class TestPostgresDashboardStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("id1", "p1", "metric-1", 0, "2026-01-01T00:00:00Z", None),
-            ("id2", "p1", "metric-2", 1, "2026-01-01T00:00:00Z", None),
+            ("id1", "p1", "metric-1", "sum", 0, "2026-01-01T00:00:00Z", None),
+            ("id2", "p1", "metric-2", "avg", 1, "2026-01-01T00:00:00Z", None),
         ]
 
         results = store.list_metrics("p1")
@@ -107,7 +107,7 @@ class TestPostgresDashboardStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("id1", "p1", "metric-1", 0, "2026-01-01T00:00:00Z",
+            ("id1", "p1", "metric-1", "sum", 0, "2026-01-01T00:00:00Z",
              {"date": "2026-01-15", "values": [10, 20, 30, 42]}),
         ]
 

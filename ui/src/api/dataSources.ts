@@ -122,6 +122,8 @@ export interface MetricDescriptor {
   name: string;
   description: string;
   data_type: string;
+  source_type: string;
+  default_aggregation: string;
   dimensions: MetricDimension[];
 }
 
@@ -224,12 +226,12 @@ export interface SparklinePoint {
 export interface DashboardMetricData {
   dashboard_metric_id: string;
   metric_id: string;
-  source_id: string;
-  source_name: string;
+  source_type: string;
   metric_key: string;
   name: string;
   description: string;
   data_type: string;
+  aggregation: string;
   current_value: number;
   value_1d: number;
   value_3d: number;
@@ -259,10 +261,11 @@ export async function listDashboardMetrics(
 export async function addDashboardMetric(
   projectId: string,
   metricId: string,
+  aggregation: string = "sum",
 ): Promise<DashboardMetricEntry> {
   const response = await apiClient.post<DashboardMetricEntry>(
     `/api/projects/${projectId}/dashboard/metrics`,
-    { metric_id: metricId },
+    { metric_id: metricId, aggregation },
     { headers: { "X-Project-Id": projectId } },
   );
   return response.data;

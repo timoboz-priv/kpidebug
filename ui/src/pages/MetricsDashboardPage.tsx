@@ -71,6 +71,16 @@ function changeColor(change: number): string {
   return "#616161";
 }
 
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  stripe: "Stripe",
+  google_analytics: "Google Analytics",
+  custom: "Custom",
+};
+
+function formatSourceType(sourceType: string): string {
+  return SOURCE_TYPE_LABELS[sourceType] || sourceType;
+}
+
 function getValueForWindow(m: DashboardMetricData, w: TimeWindow): number {
   if (w === 1) return m.value_1d;
   if (w === 3) return m.value_3d;
@@ -341,20 +351,36 @@ function MetricTile({
           </IconButton>
         </Tooltip>
 
-        {/* Metric name */}
-        <Typography
-          noWrap
-          sx={{
-            pr: 3,
-            fontWeight: 600,
-            fontSize: "0.75rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            color: "text.secondary",
-          }}
-        >
-          {metric.source_name ? `${metric.source_name} · ` : ""}{metric.name}
-        </Typography>
+        {/* Metric name + aggregation */}
+        <Tooltip title={formatSourceType(metric.source_type)} placement="top-start">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pr: 3 }}>
+            <Typography
+              noWrap
+              sx={{
+                fontWeight: 600,
+                fontSize: "0.75rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                color: "text.secondary",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              {metric.name}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.6rem",
+                fontWeight: 500,
+                color: "text.disabled",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {metric.aggregation === "avg_daily" ? "avg/d" : metric.aggregation}
+            </Typography>
+          </Box>
+        </Tooltip>
 
         {/* Value + change */}
         <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mb: 0.5 }}>

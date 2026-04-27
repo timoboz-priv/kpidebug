@@ -36,16 +36,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: <DashboardIcon />, path: "/" },
-  {
-    label: "Metrics",
-    icon: <MetricsIcon />,
-    path: "/metrics",
-    children: [
-      { label: "Explorer", icon: <ExploreIcon />, path: "/metrics/explorer" },
-    ],
-  },
-  { label: "Data", icon: <DataIcon />, path: "/data" },
-  { label: "Project Settings", icon: <SettingsIcon />, path: "/settings" },
+  { label: "Metrics Explorer", icon: <MetricsIcon />, path: "/metrics/explorer" },
+  { label: "Data Explorer", icon: <DataIcon />, path: "/data" },
+  { label: "Project", icon: <SettingsIcon />, path: "/settings" },
 ];
 
 export default function Sidebar() {

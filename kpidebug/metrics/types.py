@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 from dataclasses_json import dataclass_json
 
-from kpidebug.data.types import Aggregation, FilterOperator, TableFilter
+from kpidebug.common.math import aggregate_values
+from kpidebug.data.types import Aggregation, DataSourceType, FilterOperator, TableFilter
 
 if TYPE_CHECKING:
     from kpidebug.data.table import DataTable
@@ -125,6 +126,7 @@ class DashboardMetric:
     id: str = ""
     project_id: str = ""
     metric_id: str = ""
+    aggregation: Aggregation = Aggregation.SUM
     position: int = 0
     added_at: datetime = dataclass_field(default_factory=lambda: datetime.now(timezone.utc))
     snapshot: MetricSnapshot | None = None
@@ -143,22 +145,19 @@ class MetricSnapshot:
     def value(self) -> float:
         return self.values[-1] if self.values else 0.0
 
-    def aggregate_value(self, days: int) -> float:
+    def aggregate_value(self, days: int, aggregation: Aggregation = Aggregation.SUM) -> float:
         if not self.values or days <= 0:
             return 0.0
-        window = self.values[-days:]
-        return sum(window)
+        return aggregate_values(self.values[-days:], aggregation)
 
-    def change(self, y: int) -> float:
+    def change(self, y: int, aggregation: Aggregation = Aggregation.SUM) -> float:
         if len(self.values) < 2 * y:
             return 0.0
-        recent = self.values[-y:]
-        previous = self.values[-2 * y:-y]
-        avg_previous = sum(previous) / len(previous)
-        if avg_previous == 0:
+        recent_val = aggregate_values(self.values[-y:], aggregation)
+        previous_val = aggregate_values(self.values[-2 * y:-y], aggregation)
+        if previous_val == 0:
             return 0.0
-        avg_recent = sum(recent) / len(recent)
-        return (avg_recent - avg_previous) / avg_previous
+        return (recent_val - previous_val) / abs(previous_val)
 
 
 class Metric(ABC):
@@ -166,6 +165,8 @@ class Metric(ABC):
     name: str
     description: str
     data_type: MetricDataType
+    source_type: DataSourceType = DataSourceType.CUSTOM
+    default_aggregation: Aggregation = Aggregation.SUM
     dimensions: list[MetricDimension] = []
     table_keys: list[str] = []
 

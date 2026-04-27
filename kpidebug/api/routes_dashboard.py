@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from kpidebug.api.auth import require_project_role
 from kpidebug.api.stores import get_dashboard_store
+from kpidebug.data.types import Aggregation
 from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.types import DashboardMetric
 import kpidebug.metrics.registry as registry
@@ -25,6 +26,7 @@ router = APIRouter(
 @dataclass
 class AddDashboardMetricRequest:
     metric_id: str = ""
+    aggregation: str = "sum"
 
 
 @dataclass_json
@@ -39,12 +41,12 @@ class SparklinePoint:
 class DashboardMetricData:
     dashboard_metric_id: str = ""
     metric_id: str = ""
-    source_id: str = ""
-    source_name: str = ""
+    source_type: str = ""
     metric_key: str = ""
     name: str = ""
     description: str = ""
     data_type: str = ""
+    aggregation: str = "sum"
     current_value: float = 0.0
     value_1d: float = 0.0
     value_3d: float = 0.0
@@ -89,7 +91,11 @@ def add_dashboard_metric(
         if registry.get(body.metric_id) is None:
             raise HTTPException(status_code=404, detail="Metric not found")
     try:
-        return dashboard_store.add_metric(project_id, body.metric_id)
+        agg = Aggregation(body.aggregation)
+    except ValueError:
+        agg = Aggregation.SUM
+    try:
+        return dashboard_store.add_metric(project_id, body.metric_id, agg)
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(
@@ -128,15 +134,18 @@ def compute_dashboard_metrics(
         description = metric.description if metric else ""
         data_type = metric.data_type if metric else "number"
         metric_key = metric.id if metric else dm.metric_id
+        source_type = metric.source_type.value if metric else "custom"
 
         if snapshot is None:
             results.append(DashboardMetricData(
                 dashboard_metric_id=dm.id,
                 metric_id=dm.metric_id,
+                source_type=source_type,
                 metric_key=metric_key,
                 name=name,
                 description=description,
                 data_type=data_type,
+                aggregation=dm.aggregation.value,
             ))
             continue
 
@@ -152,20 +161,22 @@ def compute_dashboard_metrics(
         results.append(DashboardMetricData(
             dashboard_metric_id=dm.id,
             metric_id=dm.metric_id,
+            source_type=source_type,
             metric_key=metric_key,
             name=name,
             description=description,
             data_type=data_type,
+            aggregation=dm.aggregation.value,
             current_value=snapshot.value,
-            value_1d=snapshot.aggregate_value(1),
-            value_3d=snapshot.aggregate_value(3),
-            value_7d=snapshot.aggregate_value(7),
-            value_30d=snapshot.aggregate_value(30),
+            value_1d=snapshot.aggregate_value(1, dm.aggregation),
+            value_3d=snapshot.aggregate_value(3, dm.aggregation),
+            value_7d=snapshot.aggregate_value(7, dm.aggregation),
+            value_30d=snapshot.aggregate_value(30, dm.aggregation),
             sparkline=sparkline,
-            change_1d=snapshot.change(1),
-            change_3d=snapshot.change(3),
-            change_7d=snapshot.change(7),
-            change_30d=snapshot.change(30),
+            change_1d=snapshot.change(1, dm.aggregation),
+            change_3d=snapshot.change(3, dm.aggregation),
+            change_7d=snapshot.change(7, dm.aggregation),
+            change_30d=snapshot.change(30, dm.aggregation),
         ))
 
     return DashboardComputeResponse(metrics=results)

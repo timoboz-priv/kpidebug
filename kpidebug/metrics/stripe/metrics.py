@@ -1,4 +1,4 @@
-from kpidebug.data.types import Aggregation, TableFilter
+from kpidebug.data.types import Aggregation, DataSourceType, TableFilter
 from kpidebug.metrics.context import MetricContext
 from kpidebug.metrics.registry import register
 from kpidebug.metrics.types import Metric, MetricDataType, MetricResult, MetricDimension, apply_time_filter, parse_group_key
@@ -17,6 +17,7 @@ class GrossRevenueMetric(Metric):
     name = "Gross Revenue"
     description = "Total charge amount for successful payments"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:charges"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -43,6 +44,7 @@ class NetRevenueMetric(Metric):
     name = "Net Revenue"
     description = "Revenue after Stripe fees (from balance transactions)"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:balance_transactions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -67,6 +69,7 @@ class CustomerCountMetric(Metric):
     name = "Customer Count"
     description = "Total number of customers"
     data_type = MetricDataType.NUMBER
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:customers"]
     dimensions = [
         MetricDimension(key="country", name="Country"),
@@ -91,6 +94,7 @@ class MrrMetric(Metric):
     name = "Monthly Recurring Revenue"
     description = "Sum of active subscription amounts (monthly basis)"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:subscriptions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -114,6 +118,8 @@ class RefundRateMetric(Metric):
     name = "Refund Rate"
     description = "Percentage of charge amount that was refunded"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.STRIPE
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["stripe:charges"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -135,6 +141,7 @@ class TotalFeesMetric(Metric):
     name = "Total Fees"
     description = "Total Stripe processing fees"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:balance_transactions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -157,6 +164,7 @@ class RefundVolumeMetric(Metric):
     name = "Refund Volume"
     description = "Total amount refunded"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:refunds"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -179,6 +187,7 @@ class DisputeCountMetric(Metric):
     name = "Dispute Count"
     description = "Number of payment disputes and chargebacks"
     data_type = MetricDataType.NUMBER
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:disputes"]
     dimensions = [
         MetricDimension(key="reason", name="Reason"),
@@ -201,6 +210,8 @@ class InvoiceCollectionRateMetric(Metric):
     name = "Invoice Collection Rate"
     description = "Percentage of invoiced amounts that were paid"
     data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.STRIPE
+    default_aggregation = Aggregation.AVG_DAILY
     table_keys = ["stripe:invoices"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
@@ -222,6 +233,7 @@ class PayoutVolumeMetric(Metric):
     name = "Payout Volume"
     description = "Total amount paid out to your bank"
     data_type = MetricDataType.CURRENCY
+    source_type = DataSourceType.STRIPE
     table_keys = ["stripe:payouts"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),

@@ -67,6 +67,27 @@ class CreateMetricRequest:
     computation: str = ""
 
 
+def _extract_time_range(filters: list[TableFilter] | None) -> tuple[int, list[TableFilter]]:
+    if not filters:
+        return 30, []
+    from datetime import datetime as dt, timezone
+    now = dt.now(timezone.utc)
+    days = 30
+    non_time: list[TableFilter] = []
+    for f in filters:
+        if f.operator in ("gte", "gt") and f.value and "T" in f.value:
+            try:
+                start = dt.fromisoformat(f.value.replace("Z", "+00:00"))
+                days = max(1, (now - start).days)
+            except ValueError:
+                non_time.append(f)
+        elif f.operator in ("lte", "lt") and f.value and "T" in f.value:
+            pass
+        else:
+            non_time.append(f)
+    return days, non_time
+
+
 def _to_descriptor(metric: Metric) -> MetricDescriptor:
     return MetricDescriptor(
         id=metric.id,
@@ -103,24 +124,34 @@ def _resolve(metric_id: str, project_id: str, metric_store: AbstractMetricStore)
 @router.get("")
 def list_metrics(
     project_id: str,
+    source_id: str | None = Query(None),
     _member: ProjectMember = Depends(require_project_role(Role.READ)),
     metric_store: AbstractMetricStore = Depends(get_metric_store),
     data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
 ) -> list[MetricDescriptor]:
+    from kpidebug.api.routes_data_sources import make_connector
     descriptors: list[MetricDescriptor] = []
 
-    sources = data_source_store.list_sources(project_id)
-    available_tables: set[str] = set()
-    for source in sources:
-        try:
-            from kpidebug.api.routes_data_sources import make_connector
-            connector = make_connector(source, data_source_store)
-            available_tables.update(t.key for t in connector.get_tables())
-        except Exception:
-            pass
-
-    for m in registry.list_for_tables(available_tables):
-        descriptors.append(_to_descriptor(m))
+    if source_id:
+        source = data_source_store.get_source(project_id, source_id)
+        if source is not None:
+            try:
+                connector = make_connector(source, data_source_store)
+                table_keys = {t.key for t in connector.get_tables()}
+                for m in registry.list_for_tables(table_keys):
+                    descriptors.append(_to_descriptor(m))
+            except Exception:
+                pass
+    else:
+        sources = data_source_store.list_sources(project_id)
+        for source in sources:
+            try:
+                connector = make_connector(source, data_source_store)
+                table_keys = {t.key for t in connector.get_tables()}
+                for m in registry.list_for_tables(table_keys):
+                    descriptors.append(_to_descriptor(m))
+            except Exception:
+                pass
 
     for d in metric_store.list_definitions(project_id):
         descriptors.append(_def_to_descriptor(d))
@@ -197,20 +228,30 @@ def compute_metric_endpoint(
     except ValueError:
         agg = Aggregation.SUM
 
-    filters = body.filters if body.filters else None
     dimensions = body.group_by if body.group_by else None
+    days, non_time_filters = _extract_time_range(body.filters)
 
-    if body.time_column and body.time_bucket:
+    actual_agg = Aggregation.SUM if agg == Aggregation.AVG_DAILY else agg
+
+    if agg == Aggregation.AVG_DAILY and not body.time_column:
+        series = metric.compute_series(
+            ctx, dimensions=dimensions, aggregation=Aggregation.SUM,
+            filters=non_time_filters or None, days=days,
+        )
+        daily_values = [p.results[0].value if p.results else 0.0 for p in series.points]
+        avg_val = sum(daily_values) / len(daily_values) if daily_values else 0.0
+        results: list[MetricResult] = [MetricResult(value=avg_val)]
+    elif body.time_column and body.time_bucket:
         from kpidebug.metrics.types import TimeBucket
         try:
             tb = TimeBucket(body.time_bucket)
         except ValueError:
             tb = TimeBucket.DAY
         series = metric.compute_series(
-            ctx, dimensions=dimensions, aggregation=agg,
-            filters=filters, days=30, time_bucket=tb,
+            ctx, dimensions=dimensions, aggregation=actual_agg,
+            filters=non_time_filters or None, days=days, time_bucket=tb,
         )
-        results: list[MetricResult] = []
+        results = []
         for point in series.points:
             for r in point.results:
                 groups = dict(r.groups)
@@ -218,7 +259,8 @@ def compute_metric_endpoint(
                 results.append(MetricResult(value=r.value, groups=groups))
     else:
         results = metric.compute_single(
-            ctx, dimensions=dimensions, aggregation=agg, filters=filters,
+            ctx, dimensions=dimensions, aggregation=actual_agg,
+            filters=non_time_filters or None, days=days,
         )
 
     return MetricComputeResponse(

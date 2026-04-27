@@ -102,5 +102,5 @@ class TestDataSourceRoutes:
         )
         assert response.status_code == 200
         keys = [t["key"] for t in response.json()]
-        assert "charges" in keys
-        assert "customers" in keys
+        assert "stripe:charges" in keys
+        assert "stripe:customers" in keys

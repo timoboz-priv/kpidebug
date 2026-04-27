@@ -1,6 +1,10 @@
 import logging
 
 from fastapi import FastAPI, Request
+
+from kpidebug.common.logging import init_logging
+
+init_logging()
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 

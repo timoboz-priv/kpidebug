@@ -46,6 +46,7 @@ class Aggregation(str, Enum):
     MIN = "min"
     MAX = "max"
     COUNT = "count"
+    AVG_DAILY = "avg_daily"
 
 
 @dataclass_json

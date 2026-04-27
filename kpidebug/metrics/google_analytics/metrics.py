@@ -82,17 +82,17 @@ def _make_sum(metric_id: str, metric_name: str, desc: str, table_key: str,
 # --- Sessions & Traffic (simple sums) ---
 
 register(_make_sum("builtin:ga.sessions", "Sessions", "Total number of sessions",
-                             "traffic_sources", "sessions", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "sessions", TRAFFIC_DIMS))
 register(_make_sum("builtin:ga.total_users", "Total Users", "Total number of unique users",
-                             "traffic_sources", "total_users", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "total_users", TRAFFIC_DIMS))
 register(_make_sum("builtin:ga.new_users", "New Users", "Number of first-time users",
-                             "traffic_sources", "new_users", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "new_users", TRAFFIC_DIMS))
 register(_make_sum("builtin:ga.page_views", "Page Views", "Total number of page views",
-                             "traffic_sources", "page_views", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "page_views", TRAFFIC_DIMS))
 register(_make_sum("builtin:ga.conversions", "Conversions", "Total number of conversion events",
-                             "traffic_sources", "conversions", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "conversions", TRAFFIC_DIMS))
 register(_make_sum("builtin:ga.revenue", "Revenue", "Total revenue from analytics events",
-                             "traffic_sources", "total_revenue", TRAFFIC_DIMS))
+                             "google_analytics:traffic_sources", "total_revenue", TRAFFIC_DIMS))
 
 
 # --- Sessions & Traffic (weighted averages / ratios) ---
@@ -102,11 +102,11 @@ class BounceRateMetric(Metric):
     name = "Bounce Rate"
     description = "Weighted average bounce rate across sessions"
     data_type = MetricDataType.PERCENT
-    table_keys = ["traffic_sources"]
+    table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("traffic_sources"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:traffic_sources"), "date", days, date)
         table = _apply_filters(table, filters)
         rows = table.to_rows()
         total_sessions = sum(float(r.get("sessions", 0) or 0) for r in rows)
@@ -121,11 +121,11 @@ class EngagementRateMetric(Metric):
     name = "Engagement Rate"
     description = "Weighted average engagement rate across sessions"
     data_type = MetricDataType.PERCENT
-    table_keys = ["traffic_sources"]
+    table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("traffic_sources"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:traffic_sources"), "date", days, date)
         table = _apply_filters(table, filters)
         rows = table.to_rows()
         total_sessions = sum(float(r.get("sessions", 0) or 0) for r in rows)
@@ -140,11 +140,11 @@ class AvgSessionDurationMetric(Metric):
     name = "Avg Session Duration"
     description = "Weighted average session duration in seconds"
     data_type = MetricDataType.NUMBER
-    table_keys = ["traffic_sources"]
+    table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("traffic_sources"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:traffic_sources"), "date", days, date)
         table = _apply_filters(table, filters)
         rows = table.to_rows()
         total_sessions = sum(float(r.get("sessions", 0) or 0) for r in rows)
@@ -159,11 +159,11 @@ class ConversionRateMetric(Metric):
     name = "Conversion Rate"
     description = "Percentage of sessions that resulted in a conversion"
     data_type = MetricDataType.PERCENT
-    table_keys = ["traffic_sources"]
+    table_keys = ["google_analytics:traffic_sources"]
     dimensions = TRAFFIC_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("traffic_sources"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:traffic_sources"), "date", days, date)
         table = _apply_filters(table, filters)
         conversions = table.aggregate("conversions", Aggregation.SUM)
         sessions = table.aggregate("sessions", Aggregation.SUM)
@@ -180,7 +180,7 @@ register(ConversionRateMetric())
 # --- Pages ---
 
 register(_make_sum("builtin:ga.page_views_by_page", "Page Views by Page",
-                             "Page views broken down by page path", "pages", "page_views", PAGE_DIMS))
+                             "Page views broken down by page path", "google_analytics:pages", "page_views", PAGE_DIMS))
 
 
 class PageBounceRateMetric(Metric):
@@ -188,11 +188,11 @@ class PageBounceRateMetric(Metric):
     name = "Page Bounce Rate"
     description = "Bounce rate broken down by page"
     data_type = MetricDataType.PERCENT
-    table_keys = ["pages"]
+    table_keys = ["google_analytics:pages"]
     dimensions = PAGE_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("pages"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:pages"), "date", days, date)
         table = _apply_filters(table, filters)
         rows = table.to_rows()
         total_sessions = sum(float(r.get("sessions", 0) or 0) for r in rows)
@@ -207,35 +207,35 @@ register(PageBounceRateMetric())
 # --- Events ---
 
 register(_make_sum("builtin:ga.event_count", "Event Count", "Total number of events triggered",
-                             "events", "event_count", EVENT_DIMS))
+                             "google_analytics:events", "event_count", EVENT_DIMS))
 register(_make_sum("builtin:ga.event_value", "Event Value", "Total value of all events",
-                             "events", "event_value", EVENT_DIMS))
+                             "google_analytics:events", "event_value", EVENT_DIMS))
 
 # --- Geography ---
 
 register(_make_sum("builtin:ga.sessions_by_country", "Sessions by Country",
-                             "Sessions broken down by user country", "geography", "sessions", GEO_DIMS))
+                             "Sessions broken down by user country", "google_analytics:geography", "sessions", GEO_DIMS))
 
 # --- Devices ---
 
 register(_make_sum("builtin:ga.sessions_by_device", "Sessions by Device",
-                             "Sessions broken down by device type", "devices", "sessions", DEVICE_DIMS))
+                             "Sessions broken down by device type", "google_analytics:devices", "sessions", DEVICE_DIMS))
 
 # --- Users ---
 
 register(_make_sum("builtin:ga.users_by_type", "Users by Type",
-                             "Users broken down by new vs returning", "users", "total_users", USER_DIMS))
+                             "Users broken down by new vs returning", "google_analytics:users", "total_users", USER_DIMS))
 
 # --- User Acquisition ---
 
 register(_make_sum("builtin:ga.new_users_by_channel", "New Users by Channel",
-                             "New users by first-touch acquisition channel", "user_acquisition", "new_users",
+                             "New users by first-touch acquisition channel", "google_analytics:user_acquisition", "new_users",
                              ACQUISITION_DIMS))
 
 # --- Conversions ---
 
 register(_make_sum("builtin:ga.conversions_by_event", "Conversions by Event",
-                             "Conversion count by event and traffic source", "conversions", "conversions",
+                             "Conversion count by event and traffic source", "google_analytics:conversions", "conversions",
                              CONVERSION_DIMS))
 
 
@@ -244,11 +244,11 @@ class RevenuePerConversionMetric(Metric):
     name = "Revenue per Conversion"
     description = "Average revenue generated per conversion event"
     data_type = MetricDataType.NUMBER
-    table_keys = ["conversions"]
+    table_keys = ["google_analytics:conversions"]
     dimensions = CONVERSION_DIMS
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("conversions"), "date", days, date)
+        table = apply_time_filter(ctx.table("google_analytics:conversions"), "date", days, date)
         table = _apply_filters(table, filters)
         revenue = table.aggregate("total_revenue", Aggregation.SUM)
         conversions = table.aggregate("conversions", Aggregation.SUM)

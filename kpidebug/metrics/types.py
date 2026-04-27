@@ -143,6 +143,12 @@ class MetricSnapshot:
     def value(self) -> float:
         return self.values[-1] if self.values else 0.0
 
+    def aggregate_value(self, days: int) -> float:
+        if not self.values or days <= 0:
+            return 0.0
+        window = self.values[-days:]
+        return sum(window)
+
     def change(self, y: int) -> float:
         if len(self.values) < 2 * y:
             return 0.0

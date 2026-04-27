@@ -46,10 +46,15 @@ class DashboardMetricData:
     description: str = ""
     data_type: str = ""
     current_value: float = 0.0
+    value_1d: float = 0.0
+    value_3d: float = 0.0
+    value_7d: float = 0.0
+    value_30d: float = 0.0
     sparkline: list[SparklinePoint] = dataclass_field(default_factory=list)
     change_1d: float = 0.0
     change_3d: float = 0.0
     change_7d: float = 0.0
+    change_30d: float = 0.0
 
 
 @dataclass_json
@@ -152,10 +157,15 @@ def compute_dashboard_metrics(
             description=description,
             data_type=data_type,
             current_value=snapshot.value,
+            value_1d=snapshot.aggregate_value(1),
+            value_3d=snapshot.aggregate_value(3),
+            value_7d=snapshot.aggregate_value(7),
+            value_30d=snapshot.aggregate_value(30),
             sparkline=sparkline,
             change_1d=snapshot.change(1),
             change_3d=snapshot.change(3),
             change_7d=snapshot.change(7),
+            change_30d=snapshot.change(30),
         ))
 
     return DashboardComputeResponse(metrics=results)

@@ -50,11 +50,11 @@ class TestStripeConnectorGetTables:
         connector = _make_connector()
         tables = connector.get_tables()
         keys = [t.key for t in tables]
-        assert "charges" in keys
-        assert "customers" in keys
-        assert "subscriptions" in keys
-        assert "invoices" in keys
-        assert "refunds" in keys
+        assert "stripe:charges" in keys
+        assert "stripe:customers" in keys
+        assert "stripe:subscriptions" in keys
+        assert "stripe:invoices" in keys
+        assert "stripe:refunds" in keys
 
     def test_tables_have_columns(self):
         connector = _make_connector()
@@ -100,7 +100,7 @@ class TestStripeConnectorFetchTableData:
     def test_fetch_returns_table_result(self, mock_client_cls):
         _mock_charges(mock_client_cls)
         connector = _make_connector()
-        result = connector.fetch_table_data("charges")
+        result = connector.fetch_table_data("stripe:charges")
 
         assert result.total_count == 3
         assert len(result.rows) == 3
@@ -113,7 +113,7 @@ class TestStripeConnectorFetchTableData:
         query = TableQuery(
             filters=[TableFilter(column="currency", operator="eq", value="usd")],
         )
-        result = connector.fetch_table_data("charges", query)
+        result = connector.fetch_table_data("stripe:charges", query)
 
         assert result.total_count == 2
         assert all(r["currency"] == "usd" for r in result.rows)
@@ -123,7 +123,7 @@ class TestStripeConnectorFetchTableData:
         _mock_charges(mock_client_cls)
         connector = _make_connector()
         query = TableQuery(sort_by="amount", sort_order="desc")
-        result = connector.fetch_table_data("charges", query)
+        result = connector.fetch_table_data("stripe:charges", query)
 
         amounts = [r["amount"] for r in result.rows]
         assert amounts == [5000, 3000, 1000]
@@ -133,7 +133,7 @@ class TestStripeConnectorFetchTableData:
         _mock_charges(mock_client_cls)
         connector = _make_connector()
         query = TableQuery(limit=2, offset=0)
-        result = connector.fetch_table_data("charges", query)
+        result = connector.fetch_table_data("stripe:charges", query)
 
         assert result.total_count == 3
         assert len(result.rows) == 2
@@ -142,7 +142,7 @@ class TestStripeConnectorFetchTableData:
     def test_fetch_all_rows(self, mock_client_cls):
         _mock_charges(mock_client_cls)
         connector = _make_connector()
-        rows = connector.fetch_all_rows("charges")
+        rows = connector.fetch_all_rows("stripe:charges")
 
         assert len(rows) == 3
 
@@ -163,7 +163,7 @@ class TestStripeConnectorFetchTableData:
         mock_client.v1.customers.list.return_value = list_result
 
         connector = _make_connector()
-        result = connector.fetch_table_data("customers")
+        result = connector.fetch_table_data("stripe:customers")
 
         assert result.total_count == 1
         assert result.rows[0]["name"] == "Alice"

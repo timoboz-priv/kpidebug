@@ -75,6 +75,7 @@ const PANEL_WIDTH = 260;
 const AGGREGATIONS = [
   { value: "sum", label: "Sum" },
   { value: "avg", label: "Average" },
+  { value: "avg_daily", label: "Average Daily" },
   { value: "min", label: "Min" },
   { value: "max", label: "Max" },
   { value: "count", label: "Count" },

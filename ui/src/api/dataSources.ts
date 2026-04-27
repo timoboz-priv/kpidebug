@@ -231,10 +231,15 @@ export interface DashboardMetricData {
   description: string;
   data_type: string;
   current_value: number;
+  value_1d: number;
+  value_3d: number;
+  value_7d: number;
+  value_30d: number;
   sparkline: SparklinePoint[];
   change_1d: number;
   change_3d: number;
   change_7d: number;
+  change_30d: number;
 }
 
 export interface DashboardComputeResponse {

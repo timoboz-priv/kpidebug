@@ -4,7 +4,7 @@ from kpidebug.data.types import ColumnType, TableColumn, TableDescriptor
 
 GA_TABLES: list[TableDescriptor] = [
     TableDescriptor(
-        key="sessions_daily",
+        key="google_analytics:sessions_daily",
         name="Sessions (Daily)",
         description="Daily session and page view metrics",
         columns=[
@@ -25,7 +25,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="traffic_sources",
+        key="google_analytics:traffic_sources",
         name="Traffic Sources",
         description="Traffic acquisition by source, medium, and channel",
         columns=[
@@ -48,7 +48,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="pages",
+        key="google_analytics:pages",
         name="Pages",
         description="Page-level performance metrics",
         columns=[
@@ -68,7 +68,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="landing_pages",
+        key="google_analytics:landing_pages",
         name="Landing Pages",
         description="First page of each session — where users enter",
         columns=[
@@ -85,7 +85,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="events",
+        key="google_analytics:events",
         name="Events",
         description="Event-level tracking data",
         columns=[
@@ -100,7 +100,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="geography",
+        key="google_analytics:geography",
         name="Geography",
         description="User location breakdown",
         columns=[
@@ -121,7 +121,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="devices",
+        key="google_analytics:devices",
         name="Devices",
         description="Device and browser breakdown",
         columns=[
@@ -141,7 +141,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="users",
+        key="google_analytics:users",
         name="Users",
         description="New vs returning user breakdown",
         columns=[
@@ -160,7 +160,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="user_acquisition",
+        key="google_analytics:user_acquisition",
         name="User Acquisition",
         description="How users were first acquired (first-touch attribution)",
         columns=[
@@ -180,7 +180,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="conversions",
+        key="google_analytics:conversions",
         name="Conversions",
         description="Conversion event tracking",
         columns=[
@@ -197,7 +197,7 @@ GA_TABLES: list[TableDescriptor] = [
         ],
     ),
     TableDescriptor(
-        key="ecommerce",
+        key="google_analytics:ecommerce",
         name="Ecommerce",
         description="Purchase and transaction data",
         columns=[

@@ -17,7 +17,7 @@ class GrossRevenueMetric(Metric):
     name = "Gross Revenue"
     description = "Total charge amount for successful payments"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["charges"]
+    table_keys = ["stripe:charges"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="payment_method_type", name="Payment Method"),
@@ -28,7 +28,7 @@ class GrossRevenueMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("charges"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:charges"), "created", days, date)
         table = table.filter("paid", "eq", "true")
         table = _apply_filters(table, filters)
         if dimensions:
@@ -43,7 +43,7 @@ class NetRevenueMetric(Metric):
     name = "Net Revenue"
     description = "Revenue after Stripe fees (from balance transactions)"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["balance_transactions"]
+    table_keys = ["stripe:balance_transactions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="reporting_category", name="Reporting Category"),
@@ -52,7 +52,7 @@ class NetRevenueMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("balance_transactions"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:balance_transactions"), "created", days, date)
         table = table.filter("type", "eq", "charge")
         table = _apply_filters(table, filters)
         if dimensions:
@@ -67,7 +67,7 @@ class CustomerCountMetric(Metric):
     name = "Customer Count"
     description = "Total number of customers"
     data_type = MetricDataType.NUMBER
-    table_keys = ["customers"]
+    table_keys = ["stripe:customers"]
     dimensions = [
         MetricDimension(key="country", name="Country"),
         MetricDimension(key="city", name="City"),
@@ -77,7 +77,7 @@ class CustomerCountMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("customers"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:customers"), "created", days, date)
         table = _apply_filters(table, filters)
         if dimensions:
             grouped = table.group_by(*dimensions)
@@ -91,7 +91,7 @@ class MrrMetric(Metric):
     name = "Monthly Recurring Revenue"
     description = "Sum of active subscription amounts (monthly basis)"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["subscriptions"]
+    table_keys = ["stripe:subscriptions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="interval", name="Billing Interval"),
@@ -99,7 +99,7 @@ class MrrMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("subscriptions"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:subscriptions"), "created", days, date)
         table = table.filter("status", "eq", "active")
         table = _apply_filters(table, filters)
         if dimensions:
@@ -114,14 +114,14 @@ class RefundRateMetric(Metric):
     name = "Refund Rate"
     description = "Percentage of charge amount that was refunded"
     data_type = MetricDataType.PERCENT
-    table_keys = ["charges"]
+    table_keys = ["stripe:charges"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="payment_method_type", name="Payment Method"),
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("charges"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:charges"), "created", days, date)
         table = table.filter("paid", "eq", "true")
         table = _apply_filters(table, filters)
         total = table.aggregate("amount", Aggregation.SUM)
@@ -135,7 +135,7 @@ class TotalFeesMetric(Metric):
     name = "Total Fees"
     description = "Total Stripe processing fees"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["balance_transactions"]
+    table_keys = ["stripe:balance_transactions"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="type", name="Transaction Type"),
@@ -143,7 +143,7 @@ class TotalFeesMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("balance_transactions"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:balance_transactions"), "created", days, date)
         table = _apply_filters(table, filters)
         if dimensions:
             grouped = table.group_by(*dimensions)
@@ -157,7 +157,7 @@ class RefundVolumeMetric(Metric):
     name = "Refund Volume"
     description = "Total amount refunded"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["refunds"]
+    table_keys = ["stripe:refunds"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="reason", name="Reason"),
@@ -165,7 +165,7 @@ class RefundVolumeMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("refunds"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:refunds"), "created", days, date)
         table = _apply_filters(table, filters)
         if dimensions:
             grouped = table.group_by(*dimensions)
@@ -179,7 +179,7 @@ class DisputeCountMetric(Metric):
     name = "Dispute Count"
     description = "Number of payment disputes and chargebacks"
     data_type = MetricDataType.NUMBER
-    table_keys = ["disputes"]
+    table_keys = ["stripe:disputes"]
     dimensions = [
         MetricDimension(key="reason", name="Reason"),
         MetricDimension(key="status", name="Status"),
@@ -187,7 +187,7 @@ class DisputeCountMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("disputes"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:disputes"), "created", days, date)
         table = _apply_filters(table, filters)
         if dimensions:
             grouped = table.group_by(*dimensions)
@@ -201,7 +201,7 @@ class InvoiceCollectionRateMetric(Metric):
     name = "Invoice Collection Rate"
     description = "Percentage of invoiced amounts that were paid"
     data_type = MetricDataType.PERCENT
-    table_keys = ["invoices"]
+    table_keys = ["stripe:invoices"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="status", name="Status"),
@@ -209,7 +209,7 @@ class InvoiceCollectionRateMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("invoices"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:invoices"), "created", days, date)
         table = _apply_filters(table, filters)
         paid = table.aggregate("amount_paid", Aggregation.SUM)
         due = table.aggregate("amount_due", Aggregation.SUM)
@@ -222,7 +222,7 @@ class PayoutVolumeMetric(Metric):
     name = "Payout Volume"
     description = "Total amount paid out to your bank"
     data_type = MetricDataType.CURRENCY
-    table_keys = ["payouts"]
+    table_keys = ["stripe:payouts"]
     dimensions = [
         MetricDimension(key="currency", name="Currency"),
         MetricDimension(key="status", name="Status"),
@@ -231,7 +231,7 @@ class PayoutVolumeMetric(Metric):
     ]
 
     def compute_single(self, ctx, dimensions=None, aggregation=Aggregation.SUM, filters=None, days=30, date=None):
-        table = apply_time_filter(ctx.table("payouts"), "created", days, date)
+        table = apply_time_filter(ctx.table("stripe:payouts"), "created", days, date)
         table = _apply_filters(table, filters)
         if dimensions:
             grouped = table.group_by(*dimensions)

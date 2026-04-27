@@ -147,7 +147,7 @@ def _apply_sort(rows: list[dict], sort_by: str | None, sort_order: str) -> list[
 
 # --- Table fetchers ---
 
-@_register("charges")
+@_register("stripe:charges")
 def _table_charges(client: stripe.StripeClient) -> list[dict]:
     charges = _list_all(client.v1.charges.list, {})
     rows: list[dict] = []
@@ -180,7 +180,7 @@ def _table_charges(client: stripe.StripeClient) -> list[dict]:
     return rows
 
 
-@_register("customers")
+@_register("stripe:customers")
 def _table_customers(client: stripe.StripeClient) -> list[dict]:
     customers = _list_all(client.v1.customers.list, {})
     rows: list[dict] = []
@@ -203,7 +203,7 @@ def _table_customers(client: stripe.StripeClient) -> list[dict]:
     return rows
 
 
-@_register("subscriptions")
+@_register("stripe:subscriptions")
 def _table_subscriptions(client: stripe.StripeClient) -> list[dict]:
     subs = _list_all(client.v1.subscriptions.list, {"status": "all"})
     rows: list[dict] = []
@@ -243,7 +243,7 @@ def _table_subscriptions(client: stripe.StripeClient) -> list[dict]:
     return rows
 
 
-@_register("invoices")
+@_register("stripe:invoices")
 def _table_invoices(client: stripe.StripeClient) -> list[dict]:
     invoices = _list_all(client.v1.invoices.list, {})
     return [
@@ -271,7 +271,7 @@ def _table_invoices(client: stripe.StripeClient) -> list[dict]:
     ]
 
 
-@_register("refunds")
+@_register("stripe:refunds")
 def _table_refunds(client: stripe.StripeClient) -> list[dict]:
     refunds = _list_all(client.v1.refunds.list, {})
     return [
@@ -291,7 +291,7 @@ def _table_refunds(client: stripe.StripeClient) -> list[dict]:
     ]
 
 
-@_register("balance_transactions")
+@_register("stripe:balance_transactions")
 def _table_balance_transactions(client: stripe.StripeClient) -> list[dict]:
     txns = _list_all(client.v1.balance_transactions.list, {})
     return [
@@ -313,7 +313,7 @@ def _table_balance_transactions(client: stripe.StripeClient) -> list[dict]:
     ]
 
 
-@_register("disputes")
+@_register("stripe:disputes")
 def _table_disputes(client: stripe.StripeClient) -> list[dict]:
     disputes = _list_all(client.v1.disputes.list, {})
     return [
@@ -332,7 +332,7 @@ def _table_disputes(client: stripe.StripeClient) -> list[dict]:
     ]
 
 
-@_register("products")
+@_register("stripe:products")
 def _table_products(client: stripe.StripeClient) -> list[dict]:
     products = _list_all(client.v1.products.list, {})
     return [
@@ -350,7 +350,7 @@ def _table_products(client: stripe.StripeClient) -> list[dict]:
     ]
 
 
-@_register("prices")
+@_register("stripe:prices")
 def _table_prices(client: stripe.StripeClient) -> list[dict]:
     prices = _list_all(client.v1.prices.list, {})
     rows: list[dict] = []
@@ -372,7 +372,7 @@ def _table_prices(client: stripe.StripeClient) -> list[dict]:
     return rows
 
 
-@_register("payouts")
+@_register("stripe:payouts")
 def _table_payouts(client: stripe.StripeClient) -> list[dict]:
     payouts = _list_all(client.v1.payouts.list, {})
     return [

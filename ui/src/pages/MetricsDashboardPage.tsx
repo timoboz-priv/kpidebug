@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -11,6 +11,8 @@ import {
   InputAdornment,
   Tooltip,
   Button,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
   Close as CloseIcon,
@@ -23,6 +25,9 @@ import {
   AreaChart,
   Area,
   ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  ReferenceLine,
+  XAxis,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 import { useProject } from "../contexts/ProjectContext";
@@ -32,6 +37,10 @@ import {
   removeDashboardMetric,
   processProject,
 } from "../api/dataSources";
+
+type TimeWindow = 1 | 3 | 7 | 30;
+
+const SPARKLINE_POINTS: Record<TimeWindow, number> = { 1: 5, 3: 10, 7: 20, 30: 60 };
 
 function formatMetricValue(value: number, dataType: string): string {
   if (dataType === "percent") {
@@ -62,37 +71,57 @@ function changeColor(change: number): string {
   return "#616161";
 }
 
+function getValueForWindow(m: DashboardMetricData, w: TimeWindow): number {
+  if (w === 1) return m.value_1d;
+  if (w === 3) return m.value_3d;
+  if (w === 7) return m.value_7d;
+  return m.value_30d;
+}
+
+function getChangeForWindow(m: DashboardMetricData, w: TimeWindow): number {
+  if (w === 1) return m.change_1d;
+  if (w === 3) return m.change_3d;
+  if (w === 7) return m.change_7d;
+  return m.change_30d;
+}
+
 export default function MetricsDashboardPage() {
   const { currentProject } = useProject();
   const navigate = useNavigate();
 
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>(1);
   const [metrics, setMetrics] = useState<DashboardMetricData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fetchingRef = useRef(false);
+
+  const projectId = currentProject?.id;
 
   const fetchMetrics = useCallback(async () => {
-    if (!currentProject) return;
+    if (!projectId || fetchingRef.current) return;
+    fetchingRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      const res = await computeDashboardMetrics(currentProject.id);
+      const res = await computeDashboardMetrics(projectId);
       setMetrics(res.metrics);
     } catch {
       setError("Failed to load dashboard metrics");
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [currentProject]);
+  }, [projectId]);
 
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
 
   const handleRefresh = async () => {
-    if (!currentProject) return;
+    if (!projectId) return;
     setProcessing(true);
     setError(null);
     try {
-      await processProject(currentProject.id);
+      await processProject(projectId);
       await fetchMetrics();
     } catch {
       setError("Failed to refresh data");
@@ -102,9 +131,9 @@ export default function MetricsDashboardPage() {
   };
 
   const handleRemove = async (dashboardMetricId: string) => {
-    if (!currentProject) return;
+    if (!projectId) return;
     try {
-      await removeDashboardMetric(currentProject.id, dashboardMetricId);
+      await removeDashboardMetric(projectId, dashboardMetricId);
       setMetrics((prev) => prev.filter((m) => m.dashboard_metric_id !== dashboardMetricId));
     } catch {
       setError("Failed to remove metric");
@@ -117,7 +146,20 @@ export default function MetricsDashboardPage() {
     <Box sx={{ p: 3, overflow: "auto", height: "calc(100vh - 48px)" }}>
       {/* Header */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-        <Typography variant="h4">Metrics</Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Typography variant="h4">Metrics</Typography>
+          <ToggleButtonGroup
+            value={timeWindow}
+            exclusive
+            size="small"
+            onChange={(_, v) => v !== null && setTimeWindow(v as TimeWindow)}
+          >
+            <ToggleButton value={1} sx={{ textTransform: "none" }}>1d</ToggleButton>
+            <ToggleButton value={3} sx={{ textTransform: "none" }}>3d</ToggleButton>
+            <ToggleButton value={7} sx={{ textTransform: "none" }}>7d</ToggleButton>
+            <ToggleButton value={30} sx={{ textTransform: "none" }}>30d</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
           <Button
             variant="outlined"
@@ -177,6 +219,7 @@ export default function MetricsDashboardPage() {
             <MetricTile
               key={m.dashboard_metric_id}
               metric={m}
+              timeWindow={timeWindow}
               onRemove={() => handleRemove(m.dashboard_metric_id)}
             />
           ))}
@@ -228,24 +271,49 @@ export default function MetricsDashboardPage() {
   );
 }
 
+function SparklineTooltipContent({ active, payload, dataType }: any) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  const value = row.active ?? row.history ?? 0;
+  return (
+    <Box sx={{ bgcolor: "background.paper", border: 1, borderColor: "divider", borderRadius: 1, px: 1, py: 0.5 }}>
+      <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>{row.date}</Typography>
+      <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, fontFamily: "monospace" }}>
+        {formatMetricValue(value, dataType)}
+      </Typography>
+    </Box>
+  );
+}
+
 function MetricTile({
   metric,
+  timeWindow,
   onRemove,
 }: {
   metric: DashboardMetricData;
+  timeWindow: TimeWindow;
   onRemove: () => void;
 }) {
-  const valueByDate = new Map(
-    metric.sparkline.map((pt) => [
-      pt.date,
-      metric.data_type === "currency" ? pt.value / 100 : pt.value,
-    ]),
-  );
-  const dateRange = metric.sparkline.map((pt) => pt.date);
-  const sparklineData = dateRange.map((date) => ({
-    date,
-    value: valueByDate.get(date) ?? 0,
+  const maxPoints = SPARKLINE_POINTS[timeWindow];
+  const allData = metric.sparkline.map((pt) => ({
+    date: pt.date,
+    value: metric.data_type === "currency" ? pt.value / 100 : pt.value,
   }));
+  const sparklineData = allData.slice(-maxPoints);
+
+  const historyCount = Math.max(0, sparklineData.length - timeWindow);
+  const boundaryDate = historyCount > 0 ? sparklineData[historyCount].date : "";
+
+  const chartData = sparklineData.map((pt, i) => ({
+    date: pt.date,
+    history: i <= historyCount ? pt.value : undefined,
+    active: i >= historyCount ? pt.value : undefined,
+  }));
+
+  const displayValue = getValueForWindow(metric, timeWindow);
+  const displayChange = getChangeForWindow(metric, timeWindow);
+  const gradId = `grad-${metric.metric_key}`;
+  const gradHistId = `grad-hist-${metric.metric_key}`;
 
   return (
     <Card
@@ -273,7 +341,7 @@ function MetricTile({
           </IconButton>
         </Tooltip>
 
-        {/* Source and metric name */}
+        {/* Metric name */}
         <Typography
           noWrap
           sx={{
@@ -288,71 +356,77 @@ function MetricTile({
           {metric.source_name ? `${metric.source_name} · ` : ""}{metric.name}
         </Typography>
 
-        {/* Current value */}
-        <Typography
-          variant="h4"
-          sx={{ fontWeight: 700, fontFamily: "monospace", mb: 0.5 }}
-        >
-          {formatMetricValue(metric.current_value, metric.data_type)}
-        </Typography>
-
-        {/* Change badges */}
-        <Box sx={{ display: "flex", gap: 1.5, mb: 1 }}>
-          <ChangeBadge label="1D" value={metric.change_1d} />
-          <ChangeBadge label="3D" value={metric.change_3d} />
-          <ChangeBadge label="7D" value={metric.change_7d} />
+        {/* Value + change */}
+        <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mb: 0.5 }}>
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 700, fontFamily: "monospace" }}
+          >
+            {formatMetricValue(displayValue, metric.data_type)}
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              fontFamily: "monospace",
+              color: changeColor(displayChange),
+            }}
+          >
+            {formatChange(displayChange)}
+          </Typography>
         </Box>
 
         {/* Sparkline */}
         <Box sx={{ mx: -1 }}>
           <ResponsiveContainer width="100%" height={48}>
-            <AreaChart data={sparklineData}>
+            <AreaChart data={chartData}>
               <defs>
-                <linearGradient id={`grad-${metric.metric_key}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradHistId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#9e9e9e" stopOpacity={0.12} />
+                  <stop offset="95%" stopColor="#9e9e9e" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#1565c0" stopOpacity={0.2} />
                   <stop offset="95%" stopColor="#1565c0" stopOpacity={0} />
                 </linearGradient>
               </defs>
+              <XAxis dataKey="date" hide />
+              <RechartsTooltip
+                content={<SparklineTooltipContent dataType={metric.data_type} />}
+                cursor={{ stroke: "#90caf9", strokeWidth: 1 }}
+              />
+              {boundaryDate && (
+                <ReferenceLine
+                  x={boundaryDate}
+                  stroke="#bdbdbd"
+                  strokeDasharray="3 3"
+                  strokeWidth={1}
+                />
+              )}
               <Area
                 type="monotone"
-                dataKey="value"
-                stroke="#1565c0"
+                dataKey="history"
+                stroke="#bdbdbd"
                 strokeWidth={1.5}
-                fill={`url(#grad-${metric.metric_key})`}
+                fill={`url(#${gradHistId})`}
                 dot={false}
                 isAnimationActive={false}
+                connectNulls={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="active"
+                stroke="#1565c0"
+                strokeWidth={1.5}
+                fill={`url(#${gradId})`}
+                dot={false}
+                isAnimationActive={false}
+                connectNulls={false}
               />
             </AreaChart>
           </ResponsiveContainer>
         </Box>
       </CardContent>
     </Card>
-  );
-}
-
-function ChangeBadge({ label, value }: { label: string; value: number }) {
-  return (
-    <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.3 }}>
-      <Typography
-        sx={{
-          fontSize: "0.65rem",
-          fontWeight: 600,
-          color: "text.disabled",
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: "0.75rem",
-          fontWeight: 600,
-          color: changeColor(value),
-          fontFamily: "monospace",
-        }}
-      >
-        {formatChange(value)}
-      </Typography>
-    </Box>
   );
 }

@@ -146,8 +146,16 @@ class GroupedTable:
         return len(self._groups)
 
 
+def _to_str(val: RowValue) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    return str(val)
+
+
 def matches_value(row_val: RowValue, operator: FilterOperator | str, target: str) -> bool:
-    val = str(row_val) if row_val is not None else ""
+    val = _to_str(row_val)
     op = FilterOperator(operator) if isinstance(operator, str) else operator
     if op == FilterOperator.EQ:
         return val == target

@@ -3,11 +3,8 @@ from dataclasses import dataclass, field as dataclass_field
 from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from kpidebug.api.auth import (
-    get_data_source_store,
-    get_metric_store,
-    require_project_role,
-)
+from kpidebug.api.auth import require_project_role
+from kpidebug.api.stores import get_data_source_store, get_metric_store
 from kpidebug.api.routes_data_sources import make_connector
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.types import TableFilter

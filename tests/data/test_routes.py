@@ -2,11 +2,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from kpidebug.api.auth import (
-    get_current_user,
-    get_data_source_store,
-    get_project_store,
-)
+from kpidebug.api.auth import get_current_user
+from kpidebug.api.stores import get_data_source_store, get_project_store
 from kpidebug.api.server import app
 from kpidebug.data.types import (
     DataSource,

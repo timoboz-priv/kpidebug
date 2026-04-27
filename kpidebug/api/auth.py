@@ -4,19 +4,11 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
 from fastapi import Depends, Header, HTTPException
 
-from kpidebug.common.db import ConnectionPoolManager
 from kpidebug.config import config
 from kpidebug.management.types import Project, ProjectMember, Role, User
 from kpidebug.management.user_store import AbstractUserStore
-from kpidebug.management.user_store_postgres import PostgresUserStore
 from kpidebug.management.project_store import AbstractProjectStore
-from kpidebug.management.project_store_postgres import PostgresProjectStore
-from kpidebug.data.data_source_store import DataSourceStore
-from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
-from kpidebug.metrics.metric_store import AbstractMetricStore
-from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
-from kpidebug.management.artifact_store_postgres import PostgresArtifactStore
-from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
+from kpidebug.api.stores import get_user_store, get_project_store
 
 _firebase_app: firebase_admin.App | None = None
 
@@ -63,34 +55,6 @@ def verify_firebase_token(authorization: str = Header(...)) -> FirebaseUser:
         name=name,
         picture=picture,
     )
-
-
-def _get_pool_manager() -> ConnectionPoolManager:
-    return ConnectionPoolManager.get_instance()
-
-
-def get_user_store() -> AbstractUserStore:
-    return PostgresUserStore(_get_pool_manager())
-
-
-def get_project_store() -> AbstractProjectStore:
-    return PostgresProjectStore(_get_pool_manager())
-
-
-def get_data_source_store() -> DataSourceStore:
-    return PostgresDataSourceStore(_get_pool_manager())
-
-
-def get_metric_store() -> AbstractMetricStore:
-    return PostgresMetricStore(_get_pool_manager())
-
-
-def get_dashboard_store() -> PostgresDashboardStore:
-    return PostgresDashboardStore(_get_pool_manager())
-
-
-def get_artifact_store() -> PostgresArtifactStore:
-    return PostgresArtifactStore(_get_pool_manager())
 
 
 def get_current_user(

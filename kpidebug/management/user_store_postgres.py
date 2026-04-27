@@ -47,6 +47,10 @@ class PostgresUserStore(AbstractUserStore):
                     avatar_url TEXT NOT NULL DEFAULT ''
                 )
             """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_email
+                ON users(email)
+            """)
 
     def drop_tables(self) -> None:
         with self.pool.connection() as conn:

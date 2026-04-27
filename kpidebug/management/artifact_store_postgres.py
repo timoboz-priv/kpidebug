@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime, timezone
 
 from kpidebug.common.db import ConnectionPoolManager
+from kpidebug.management.artifact_store import AbstractArtifactStore
 from kpidebug.management.types import ArtifactType, ProjectArtifact
 
 
-class PostgresArtifactStore:
+class PostgresArtifactStore(AbstractArtifactStore):
     def __init__(self, pool_manager: ConnectionPoolManager):
         self.pool = pool_manager.pool()
 
@@ -25,6 +26,10 @@ class PostgresArtifactStore:
                     created_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (project_id, id)
                 )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_project_artifacts_project_id
+                ON project_artifacts(project_id)
             """)
 
     def drop_tables(self) -> None:

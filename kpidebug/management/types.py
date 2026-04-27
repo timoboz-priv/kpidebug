@@ -25,6 +25,7 @@ class Project:
     id: str = ""
     name: str = ""
     description: str = ""
+    summary: str | None = None
 
 
 @dataclass_json

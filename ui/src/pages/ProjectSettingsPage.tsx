@@ -30,7 +30,10 @@ import {
   Add as AddIcon,
   Link as LinkIcon,
   InsertDriveFile as FileIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
+import ReactMarkdown from "react-markdown";
 import { useProject } from "../contexts/ProjectContext";
 import { useUser } from "../contexts/UserContext";
 import {
@@ -45,6 +48,7 @@ import {
   createUrlArtifact,
   createFileArtifact,
   deleteArtifact,
+  generateSummary,
 } from "../api/projects";
 import AddUserToProjectDialog from "../components/AddUserToProjectDialog";
 import DataSourcesSection from "../components/DataSourcesSection";
@@ -98,9 +102,10 @@ export default function ProjectSettingsPage() {
           projectId={currentProject.id}
           initialName={currentProject.name}
           initialDescription={currentProject.description}
+          initialSummary={currentProject.summary}
           isAdmin={isAdmin}
-          onProjectUpdated={(name, description) => {
-            selectProject({ ...currentProject, name, description });
+          onProjectUpdated={(updated) => {
+            selectProject({ ...currentProject, ...updated });
           }}
         />
       )}
@@ -156,72 +161,43 @@ function SettingsTab({
   projectId,
   initialName,
   initialDescription,
+  initialSummary,
   isAdmin,
   onProjectUpdated,
 }: {
   projectId: string;
   initialName: string;
   initialDescription: string;
+  initialSummary: string | null;
   isAdmin: boolean;
-  onProjectUpdated: (name: string, description: string) => void;
+  onProjectUpdated: (updated: { name: string; description: string; summary?: string | null }) => void;
 }) {
-  const [name, setName] = useState(initialName);
-  const [description, setDescription] = useState(initialDescription);
-  const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
-
-  const hasChanges = name !== initialName || description !== initialDescription;
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateProject(projectId, { name, description });
-      onProjectUpdated(name, description);
-      setSnackbar("Project updated");
-    } catch {
-      setSnackbar("Failed to update project");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <>
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2 }}>Project Info</Typography>
-          <TextField
-            fullWidth
-            label="Project Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!isAdmin}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={!isAdmin}
-            multiline
-            minRows={2}
-            maxRows={4}
-          />
-          {isAdmin && (
-            <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end" }}>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleSave}
-                disabled={!hasChanges || saving}
-              >
-                {saving ? "Saving..." : "Save"}
-              </Button>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+      <ProjectInfoCard
+        projectId={projectId}
+        initialName={initialName}
+        initialDescription={initialDescription}
+        isAdmin={isAdmin}
+        onSaved={(name, description) => {
+          onProjectUpdated({ name, description });
+          setSnackbar("Project updated");
+        }}
+        onError={() => setSnackbar("Failed to update project")}
+      />
+
+      <SummaryCard
+        projectId={projectId}
+        initialSummary={initialSummary}
+        isAdmin={isAdmin}
+        onSaved={(summary) => {
+          onProjectUpdated({ name: initialName, description: initialDescription, summary });
+          setSnackbar("Summary saved");
+        }}
+        onError={(msg) => setSnackbar(msg)}
+      />
 
       <ArtifactsSection projectId={projectId} isAdmin={isAdmin} />
 
@@ -232,6 +208,207 @@ function SettingsTab({
         message={snackbar}
       />
     </>
+  );
+}
+
+function ProjectInfoCard({
+  projectId,
+  initialName,
+  initialDescription,
+  isAdmin,
+  onSaved,
+  onError,
+}: {
+  projectId: string;
+  initialName: string;
+  initialDescription: string;
+  isAdmin: boolean;
+  onSaved: (name: string, description: string) => void;
+  onError: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProject(projectId, { name, description });
+      onSaved(name, description);
+      setEditing(false);
+    } catch {
+      onError();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setName(initialName);
+    setDescription(initialDescription);
+    setEditing(false);
+  };
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+          <Typography variant="h6">Project Info</Typography>
+          {isAdmin && !editing && (
+            <Button size="small" startIcon={<EditIcon />} onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          )}
+        </Box>
+
+        {editing ? (
+          <>
+            <TextField
+              fullWidth
+              label="Project Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              multiline
+              minRows={2}
+              maxRows={4}
+            />
+            <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
+              <Button size="small" onClick={handleCancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button variant="contained" size="small" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </Box>
+          </>
+        ) : (
+          <>
+            <Typography variant="subtitle2" color="text.secondary">Name</Typography>
+            <Typography variant="body1" sx={{ mb: 2 }}>{initialName}</Typography>
+
+            <Typography variant="subtitle2" color="text.secondary">Description</Typography>
+            <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+              {initialDescription || <Typography component="span" color="text.disabled">No description</Typography>}
+            </Typography>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SummaryCard({
+  projectId,
+  initialSummary,
+  isAdmin,
+  onSaved,
+  onError,
+}: {
+  projectId: string;
+  initialSummary: string | null;
+  isAdmin: boolean;
+  onSaved: (summary: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [summary, setSummary] = useState(initialSummary || "");
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProject(projectId, { summary });
+      onSaved(summary);
+      setEditing(false);
+    } catch {
+      onError("Failed to save summary");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSummary(initialSummary || "");
+    setEditing(false);
+  };
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const updated = await generateSummary(projectId);
+      const text = updated.summary || "";
+      setSummary(text);
+      onSaved(text);
+    } catch (err: any) {
+      onError(err.response?.data?.detail || "Failed to generate summary");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+          <Typography variant="h6">Summary</Typography>
+          {isAdmin && !editing && (
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                size="small"
+                startIcon={generating ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+                onClick={handleGenerate}
+                disabled={generating}
+              >
+                {generating ? "Generating..." : "Generate"}
+              </Button>
+              <Button size="small" startIcon={<EditIcon />} onClick={() => setEditing(true)} disabled={generating}>
+                Edit
+              </Button>
+            </Box>
+          )}
+        </Box>
+
+        {editing ? (
+          <>
+            <TextField
+              fullWidth
+              label="Summary"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              multiline
+              minRows={4}
+              maxRows={12}
+              placeholder="Business summary for your project (i.e. company information, ...)"
+            />
+            <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
+              <Button size="small" onClick={handleCancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button variant="contained" size="small" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </Box>
+          </>
+        ) : (
+          initialSummary ? (
+            <Box sx={{ "& p:first-of-type": { mt: 0 }, "& p:last-of-type": { mb: 0 } }}>
+              <ReactMarkdown>{initialSummary}</ReactMarkdown>
+            </Box>
+          ) : (
+            <Typography color="text.disabled">No summary yet</Typography>
+          )
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

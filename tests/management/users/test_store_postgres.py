@@ -106,8 +106,8 @@ class TestPostgresUserStore:
 
         store.ensure_tables()
 
-        args = conn.execute.call_args
-        assert "CREATE TABLE IF NOT EXISTS users" in args[0][0]
+        calls = [str(c) for c in conn.execute.call_args_list]
+        assert any("CREATE TABLE IF NOT EXISTS users" in c for c in calls)
 
     def test_drop_tables(self):
         store, pool = self._make_store()

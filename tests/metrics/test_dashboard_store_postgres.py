@@ -23,11 +23,10 @@ class TestPostgresDashboardStore:
 
         store.ensure_tables()
 
-        conn.execute.assert_called_once()
-        sql = conn.execute.call_args[0][0]
-        assert "CREATE TABLE IF NOT EXISTS dashboard_metrics" in sql
-        assert "metric_id" in sql
-        assert "PRIMARY KEY (project_id, id)" in sql
+        calls = [str(c) for c in conn.execute.call_args_list]
+        assert any("CREATE TABLE IF NOT EXISTS dashboard_metrics" in c for c in calls)
+        assert any("metric_id" in c for c in calls)
+        assert any("PRIMARY KEY (project_id, id)" in c for c in calls)
 
     def test_add_metric(self):
         store, pool = self._make_store()

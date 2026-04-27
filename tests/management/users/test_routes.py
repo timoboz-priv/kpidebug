@@ -2,7 +2,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from kpidebug.api.auth import FirebaseUser, get_current_user, get_user_store
+from kpidebug.api.auth import FirebaseUser, get_current_user
+from kpidebug.api.stores import get_user_store
 from kpidebug.api.server import app
 from kpidebug.management.types import User
 

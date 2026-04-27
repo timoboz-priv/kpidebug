@@ -5,13 +5,11 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
 from kpidebug.api.auth import (
-    get_artifact_store,
     get_current_user,
-    get_project_store,
-    get_user_store,
     require_project_role,
 )
-from kpidebug.management.artifact_store_postgres import PostgresArtifactStore
+from kpidebug.api.stores import get_artifact_store, get_project_store, get_user_store
+from kpidebug.management.artifact_store import AbstractArtifactStore
 from kpidebug.management.types import (
     AddMemberRequest,
     ArtifactType,
@@ -23,6 +21,7 @@ from kpidebug.management.types import (
 )
 from kpidebug.management.project_store import AbstractProjectStore
 from kpidebug.management.user_store import AbstractUserStore
+from kpidebug.management.summary_agent import generate_summary
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -70,10 +69,13 @@ def update_project(
     _admin: ProjectMember = Depends(require_project_role(Role.ADMIN)),
     project_store: AbstractProjectStore = Depends(get_project_store),
 ) -> Project:
-    return project_store.update(project_id, {
+    updates: dict = {
         "name": body.name,
         "description": body.description,
-    })
+    }
+    if body.summary is not None:
+        updates["summary"] = body.summary
+    return project_store.update(project_id, updates)
 
 
 @router.delete("/{project_id}")
@@ -151,6 +153,20 @@ def remove_member(
     return {"ok": True}
 
 
+@router.post("/{project_id}/generate-summary")
+def generate_project_summary(
+    project_id: str,
+    _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
+    project_store: AbstractProjectStore = Depends(get_project_store),
+    artifact_store: AbstractArtifactStore = Depends(get_artifact_store),
+) -> Project:
+    try:
+        summary = generate_summary(artifact_store, project_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return project_store.update(project_id, {"summary": summary})
+
+
 def _require_membership(project_store: AbstractProjectStore, project_id: str, user_id: str) -> ProjectMember:
     member = project_store.get_member(project_id, user_id)
     if member is None:
@@ -170,7 +186,7 @@ class CreateUrlArtifactRequest:
 def list_artifacts(
     project_id: str,
     _member: ProjectMember = Depends(require_project_role(Role.READ)),
-    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+    artifact_store: AbstractArtifactStore = Depends(get_artifact_store),
 ) -> list[ProjectArtifact]:
     return artifact_store.list(project_id)
 
@@ -180,7 +196,7 @@ def create_url_artifact(
     project_id: str,
     body: CreateUrlArtifactRequest,
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
-    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+    artifact_store: AbstractArtifactStore = Depends(get_artifact_store),
 ) -> ProjectArtifact:
     if not body.url.strip():
         raise HTTPException(status_code=400, detail="URL is required")
@@ -192,7 +208,7 @@ async def create_file_artifact(
     project_id: str,
     file: UploadFile = File(...),
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
-    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+    artifact_store: AbstractArtifactStore = Depends(get_artifact_store),
 ) -> ProjectArtifact:
     content = await file.read()
     return artifact_store.create_file(
@@ -209,7 +225,7 @@ def delete_artifact(
     project_id: str,
     artifact_id: str,
     _member: ProjectMember = Depends(require_project_role(Role.ADMIN)),
-    artifact_store: PostgresArtifactStore = Depends(get_artifact_store),
+    artifact_store: AbstractArtifactStore = Depends(get_artifact_store),
 ) -> dict[str, bool]:
     artifact_store.delete(project_id, artifact_id)
     return {"ok": True}

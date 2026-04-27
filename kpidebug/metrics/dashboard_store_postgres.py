@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime, timezone
 
 from kpidebug.common.db import ConnectionPoolManager
+from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.types import DashboardMetric
 
 
-class PostgresDashboardStore:
+class PostgresDashboardStore(AbstractDashboardStore):
     def __init__(self, pool_manager: ConnectionPoolManager):
         self.pool = pool_manager.pool()
 
@@ -21,6 +22,10 @@ class PostgresDashboardStore:
                     PRIMARY KEY (project_id, id),
                     UNIQUE (project_id, metric_id)
                 )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dashboard_metrics_project_id
+                ON dashboard_metrics(project_id)
             """)
 
     def drop_tables(self) -> None:

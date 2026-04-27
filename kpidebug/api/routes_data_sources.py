@@ -3,16 +3,14 @@ from dataclasses import dataclass, field as dataclass_field
 from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
 
-from kpidebug.api.auth import (
-    get_data_source_store,
-    require_project_role,
-)
+from kpidebug.api.auth import require_project_role
+from kpidebug.api.stores import get_data_source_store
 from kpidebug.data.cached_connector import CachedConnector, TableSyncError
 from kpidebug.data.connector import (
     ConnectorError,
     DataSourceConnector,
 )
-from kpidebug.data.data_source_store import DataSourceStore
+from kpidebug.data.data_source_store import AbstractDataSourceStore
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.stripe.connector import StripeConnector
 from kpidebug.data.google_analytics.connector import GoogleAnalyticsConnector
@@ -58,7 +56,7 @@ def list_data_sources(
     _member: ProjectMember = Depends(
         require_project_role(Role.READ)
     ),
-    data_source_store: DataSourceStore = Depends(get_data_source_store),
+    data_source_store: AbstractDataSourceStore = Depends(get_data_source_store),
 ) -> list[DataSource]:
     return data_source_store.list_sources(project_id)
 
@@ -70,7 +68,7 @@ def connect_data_source(
     _member: ProjectMember = Depends(
         require_project_role(Role.ADMIN)
     ),
-    data_source_store: DataSourceStore = Depends(get_data_source_store),
+    data_source_store: AbstractDataSourceStore = Depends(get_data_source_store),
 ) -> DataSource:
     try:
         source_type = DataSourceType(body.source_type)

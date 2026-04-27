@@ -3,10 +3,10 @@ import uuid
 
 from kpidebug.common.db import ConnectionPoolManager
 from kpidebug.data.types import DataSource, DataSourceType, TableFilter, TableQuery, TableResult
-from kpidebug.data.data_source_store import DataSourceStore
+from kpidebug.data.data_source_store import AbstractDataSourceStore
 
 
-class PostgresDataSourceStore(DataSourceStore):
+class PostgresDataSourceStore(AbstractDataSourceStore):
     def __init__(self, pool_manager: ConnectionPoolManager):
         self.pool = pool_manager.pool()
 
@@ -38,6 +38,14 @@ class PostgresDataSourceStore(DataSourceStore):
                     synced_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (source_id, table_key)
                 )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_data_sources_project_id
+                ON data_sources(project_id)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_cached_table_data_source_id
+                ON cached_table_data(source_id)
             """)
 
     def drop_tables(self) -> None:

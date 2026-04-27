@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from kpidebug.api.auth import get_current_user, get_user_store
+from kpidebug.api.auth import get_current_user
+from kpidebug.api.stores import get_user_store
 from kpidebug.management.user_store import AbstractUserStore
 from kpidebug.management.types import User
 

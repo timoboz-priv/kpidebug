@@ -5,17 +5,14 @@ from datetime import datetime, timedelta, timezone
 from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
 
-from kpidebug.api.auth import (
-    get_dashboard_store,
-    get_data_source_store,
-    require_project_role,
-)
+from kpidebug.api.auth import require_project_role
+from kpidebug.api.stores import get_dashboard_store, get_data_source_store
 from kpidebug.api.routes_data_sources import make_connector
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.types import TableFilter
 from kpidebug.metrics.builtin_metrics import MetricComputeResult
 from kpidebug.metrics.compute import compute_metric
-from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
+from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.resolver import is_builtin_id, resolve_builtin
 from kpidebug.metrics.types import (
     Aggregation,
@@ -82,7 +79,7 @@ class DashboardComputeResponse:
 def list_dashboard_metrics(
     project_id: str,
     _member: ProjectMember = Depends(require_project_role(Role.READ)),
-    dashboard_store: PostgresDashboardStore = Depends(get_dashboard_store),
+    dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
 ) -> list[DashboardMetric]:
     return dashboard_store.list_metrics(project_id)
 
@@ -92,7 +89,7 @@ def add_dashboard_metric(
     project_id: str,
     body: AddDashboardMetricRequest,
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
-    dashboard_store: PostgresDashboardStore = Depends(get_dashboard_store),
+    dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
 ) -> DashboardMetric:
     if not body.metric_id:
         raise HTTPException(
@@ -117,7 +114,7 @@ def remove_dashboard_metric(
     project_id: str,
     dashboard_metric_id: str,
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
-    dashboard_store: PostgresDashboardStore = Depends(get_dashboard_store),
+    dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
 ) -> dict[str, str]:
     dashboard_store.remove_metric(project_id, dashboard_metric_id)
     return {"status": "ok"}
@@ -128,7 +125,7 @@ def compute_dashboard_metrics(
     project_id: str,
     body: DashboardComputeRequest,
     _member: ProjectMember = Depends(require_project_role(Role.READ)),
-    dashboard_store: PostgresDashboardStore = Depends(get_dashboard_store),
+    dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
     data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
 ) -> DashboardComputeResponse:
     pinned = dashboard_store.list_metrics(project_id)

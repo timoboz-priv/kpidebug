@@ -6,6 +6,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
+  summary: string | null;
 }
 
 export interface ProjectMember {
@@ -18,6 +19,7 @@ export interface ProjectMember {
 export interface CreateProjectRequest {
   name: string;
   description?: string;
+  summary?: string;
 }
 
 export interface AddMemberRequest {
@@ -41,7 +43,11 @@ export async function getProject(projectId: string): Promise<Project> {
 }
 
 export async function updateProject(projectId: string, data: Partial<CreateProjectRequest>): Promise<Project> {
-  const response = await apiClient.put<Project>(`/api/projects/${projectId}`, data);
+  const response = await apiClient.put<Project>(
+    `/api/projects/${projectId}`,
+    data,
+    { headers: { "X-Project-Id": projectId } },
+  );
   return response.data;
 }
 
@@ -126,4 +132,13 @@ export async function deleteArtifact(projectId: string, artifactId: string): Pro
     `/api/projects/${projectId}/artifacts/${artifactId}`,
     { headers: { "X-Project-Id": projectId } },
   );
+}
+
+export async function generateSummary(projectId: string): Promise<Project> {
+  const response = await apiClient.post<Project>(
+    `/api/projects/${projectId}/generate-summary`,
+    {},
+    { headers: { "X-Project-Id": projectId } },
+  );
+  return response.data;
 }

@@ -15,8 +15,12 @@ class PostgresProjectStore(AbstractProjectStore):
                 CREATE TABLE IF NOT EXISTS projects (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL DEFAULT '',
-                    description TEXT NOT NULL DEFAULT ''
+                    description TEXT NOT NULL DEFAULT '',
+                    summary TEXT DEFAULT NULL
                 )
+            """)
+            conn.execute("""
+                ALTER TABLE projects ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT NULL
             """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS project_members (
@@ -27,6 +31,10 @@ class PostgresProjectStore(AbstractProjectStore):
                     user_email TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (project_id, user_id)
                 )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_project_members_user_id
+                ON project_members(user_id)
             """)
 
     def drop_tables(self) -> None:
@@ -42,12 +50,12 @@ class PostgresProjectStore(AbstractProjectStore):
     def get(self, project_id: str) -> Project | None:
         with self.pool.connection() as conn:
             row = conn.execute(
-                "SELECT id, name, description FROM projects WHERE id = %s",
+                "SELECT id, name, description, summary FROM projects WHERE id = %s",
                 (project_id,),
             ).fetchone()
         if row is None:
             return None
-        return Project(id=row[0], name=row[1], description=row[2])
+        return Project(id=row[0], name=row[1], description=row[2], summary=row[3])
 
     def create(self, name: str, description: str, creator_id: str, creator_name: str, creator_email: str) -> Project:
         project_id = str(uuid.uuid4())
@@ -79,14 +87,14 @@ class PostgresProjectStore(AbstractProjectStore):
         with self.pool.connection() as conn:
             rows = conn.execute(
                 """
-                SELECT p.id, p.name, p.description
+                SELECT p.id, p.name, p.description, p.summary
                 FROM projects p
                 JOIN project_members pm ON pm.project_id = p.id
                 WHERE pm.user_id = %s
                 """,
                 (user_id,),
             ).fetchall()
-        return [Project(id=r[0], name=r[1], description=r[2]) for r in rows]
+        return [Project(id=r[0], name=r[1], description=r[2], summary=r[3]) for r in rows]
 
     def get_members(self, project_id: str) -> list[ProjectMember]:
         with self.pool.connection() as conn:

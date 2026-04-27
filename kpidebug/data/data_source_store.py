@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from kpidebug.data.types import DataSource, DataSourceType
 
 
-class DataSourceStore(ABC):
+class AbstractDataSourceStore(ABC):
     @abstractmethod
     def create_source(
         self, project_id: str, name: str,

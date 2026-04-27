@@ -21,7 +21,7 @@ class TestPostgresProjectStore:
     def test_get_returns_project(self):
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
-        conn.execute.return_value.fetchone.return_value = ("p1", "My Project", "desc")
+        conn.execute.return_value.fetchone.return_value = ("p1", "My Project", "desc", None)
 
         project = store.get("p1")
 
@@ -61,8 +61,8 @@ class TestPostgresProjectStore:
         store, pool = self._make_store()
         conn = self._mock_connection(pool)
         conn.execute.return_value.fetchall.return_value = [
-            ("p1", "Project 1", "desc1"),
-            ("p2", "Project 2", "desc2"),
+            ("p1", "Project 1", "desc1", None),
+            ("p2", "Project 2", "desc2", "A summary"),
         ]
 
         projects = store.list_for_user("u1")

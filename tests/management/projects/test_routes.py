@@ -2,7 +2,8 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from kpidebug.api.auth import get_current_user, get_project_store, get_user_store, require_project_role
+from kpidebug.api.auth import get_current_user, require_project_role
+from kpidebug.api.stores import get_project_store, get_user_store
 from kpidebug.management.types import Project, ProjectMember, Role, User
 from kpidebug.api.server import app
 

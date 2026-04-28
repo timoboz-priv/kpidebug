@@ -14,6 +14,7 @@ from kpidebug.analysis.templates.conversion_breakdown import (
     ConversionBreakdownTemplate,
 )
 from kpidebug.analysis.types import AnalysisResult
+from kpidebug.data.types import Aggregation
 from kpidebug.data.data_source_store_postgres import (
     PostgresDataSourceStore,
 )
@@ -252,10 +253,11 @@ def _compute_and_store_metrics(
 
             elapsed = time.monotonic() - metric_start
             logger.info(
-                "Computed metric '%s' in %.1fs "
-                "— latest value: %.2f, %d data points",
+                "Computed %-25s in %.1fs — %s",
                 metric.name, elapsed,
-                snapshot.value, len(snapshot.values),
+                _format_snapshot_summary(
+                    snapshot, dm.aggregation,
+                ),
             )
             computed += 1
         except Exception as e:
@@ -316,9 +318,11 @@ def _compute_simulated_metrics(
             )
             simulated.append(sim_dm)
             logger.info(
-                "Simulated metric '%s' — latest value: %.2f, "
-                "%d data points",
-                metric.name, snapshot.value, len(snapshot.values),
+                "Simulated %-25s — %s",
+                metric.name,
+                _format_snapshot_summary(
+                    snapshot, dm.aggregation,
+                ),
             )
         except Exception as e:
             logger.error(
@@ -365,6 +369,26 @@ def _log_analysis_result(
             len(insight.signals),
             len(insight.actions),
         )
+
+
+def _format_snapshot_summary(
+    snapshot: MetricSnapshot,
+    aggregation: Aggregation,
+) -> str:
+    v1 = snapshot.aggregate_value(1, aggregation)
+    v3 = snapshot.aggregate_value(3, aggregation)
+    v7 = snapshot.aggregate_value(7, aggregation)
+    v30 = snapshot.aggregate_value(30, aggregation)
+    c1 = snapshot.change(1, aggregation)
+    c3 = snapshot.change(3, aggregation)
+    c7 = snapshot.change(7, aggregation)
+    c30 = snapshot.change(30, aggregation)
+    return (
+        f"1d: {v1:>12,.2f} ({c1:+6.1%})  "
+        f"3d: {v3:>12,.2f} ({c3:+6.1%})  "
+        f"7d: {v7:>12,.2f} ({c7:+6.1%})  "
+        f"30d: {v30:>12,.2f} ({c30:+6.1%})"
+    )
 
 
 def _resolve_metric(

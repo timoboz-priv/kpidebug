@@ -1,0 +1,6 @@
+id,name,description,active,default_price,type,created,updated
+prod_starter,Starter Plan,Basic analytics for small teams,True,price_12caf9c6fbc441e596527512,service,2025-03-30T12:00:00Z,2025-03-30T12:00:00Z
+prod_growth,Growth Plan,Advanced features for growing startups,True,price_49d0be1899954181b1217232,service,2025-03-30T12:00:00Z,2025-03-30T12:00:00Z
+prod_pro,Pro Plan,Full-featured plan for professionals,True,price_2706a1b6824b44679edbf40c,service,2025-03-30T12:00:00Z,2025-03-30T12:00:00Z
+prod_team,Team Plan,Collaboration features for teams,True,price_04b24950c0b94bebbb7935eb,service,2025-03-30T12:00:00Z,2025-03-30T12:00:00Z
+prod_enterprise,Enterprise Plan,Custom solution for large organizations,True,price_4ee8017b9c0b46808bcd64d1,service,2025-03-30T12:00:00Z,2025-03-30T12:00:00Z

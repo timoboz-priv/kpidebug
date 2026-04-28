@@ -5,8 +5,10 @@ from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
 
 from kpidebug.api.auth import require_project_role
-from kpidebug.api.stores import get_dashboard_store
+from kpidebug.api.stores import get_dashboard_store, get_data_source_store, get_metric_store
+from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.types import Aggregation
+from kpidebug.metrics.metric_store import AbstractMetricStore
 from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.types import DashboardMetric
 import kpidebug.metrics.registry as registry
@@ -82,6 +84,8 @@ def add_dashboard_metric(
     body: AddDashboardMetricRequest,
     _member: ProjectMember = Depends(require_project_role(Role.EDIT)),
     dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
+    data_source_store: PostgresDataSourceStore = Depends(get_data_source_store),
+    metric_store: AbstractMetricStore = Depends(get_metric_store),
 ) -> DashboardMetric:
     if not body.metric_id:
         raise HTTPException(
@@ -95,13 +99,33 @@ def add_dashboard_metric(
     except ValueError:
         agg = Aggregation.SUM
     try:
-        return dashboard_store.add_metric(project_id, body.metric_id, agg)
+        dm = dashboard_store.add_metric(project_id, body.metric_id, agg)
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(
                 status_code=409, detail="Metric already on dashboard",
             )
         raise
+
+    try:
+        from kpidebug.metrics.context import MetricContext
+        from kpidebug.metrics.expression_metric import ExpressionMetric
+        from kpidebug.metrics.types import MetricSnapshot
+
+        metric = registry.get(body.metric_id)
+        if metric is None:
+            defn = metric_store.get_definition(project_id, body.metric_id)
+            if defn:
+                metric = ExpressionMetric(defn)
+        if metric:
+            ctx = MetricContext.for_project(project_id, data_source_store)
+            series = metric.compute_series(ctx, aggregation=agg, days=60)
+            snapshot = MetricSnapshot(metric_id=body.metric_id, project_id=project_id, values=series.values)
+            dashboard_store.store_snapshot(project_id, body.metric_id, snapshot)
+    except Exception:
+        pass
+
+    return dm
 
 
 @router.delete("/metrics/{dashboard_metric_id}")

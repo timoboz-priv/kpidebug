@@ -27,12 +27,21 @@ kpidebug/                        # Backend application package
 │   ├── routes_dashboard.py      # /api/projects/{id}/dashboard pinned metrics
 │   ├── routes_data_sources.py   # /api/projects/{id}/data-sources management
 │   └── routes_data_tables.py    # /api/projects/{id}/data-tables queries
+├── processor.py                 # Orchestrates sync, metrics, analysis (see below)
+├── analysis/                    # Analysis engine (see docs/analysis-engine.md)
+│   ├── types.py                 # Insight, Signal, Action, UpsidePotential, Priority
+│   ├── context.py               # AnalysisContext: lazy metric/table resolution
+│   ├── utils.py                 # ChangeCategory, classify_change, thresholds
+│   ├── analyzer.py              # Abstract Analyzer base class
+│   ├── analyzer_template.py     # TemplateAnalyzer + InsightTemplate
+│   └── templates/               # Concrete insight templates
+│       ├── acquisition_drop.py  # Traffic drop with stable conversion
+│       └── conversion_breakdown.py  # Conversion drop with stable traffic
 ├── metrics/                     # Metrics engine (see docs/metrics-engine.md)
 │   ├── types.py                 # Metric, MetricDefinition, MetricSnapshot, enums
 │   ├── computation.py           # DSL tokenizer, parser, evaluator
 │   ├── context.py               # MetricContext: bridges DSL to data sources
 │   ├── expression_metric.py     # ExpressionMetric: user-defined metric wrapper
-│   ├── processor.py             # Batch sync + compute for dashboard snapshots
 │   ├── registry.py              # Builtin metric registry
 │   ├── metric_store.py          # AbstractMetricStore interface
 │   ├── metric_store_postgres.py # PostgreSQL implementation
@@ -111,6 +120,7 @@ scripts/                         # Database setup scripts
 ## Key subsystems
 - [Metrics Engine](docs/metrics-engine.md) - DSL-based metric computation, builtin metrics, snapshots
 - [Data Layer](docs/data-layer.md) - DataTable abstraction, connectors, caching
+- [Analysis Engine](docs/analysis-engine.md) - Template-based insight detection, AnalysisContext, processor orchestration
 
 
 # Patterns
@@ -144,6 +154,7 @@ Each integration (Stripe, GA) implements `DataSourceConnector`. At runtime, conn
 - Use `self` not `cls` for class methods. Don't use the @classmethod annotations
 - Prefer `__init__` to `new`
 - Enums inherit from `(str, Enum)` for JSON serialization
+- Use enums for fields with a fixed set of distinct values (priorities, statuses, categories), not plain strings
 - Raw SQL with psycopg3 parameter binding. No ORM, no query builder
 - Logging via stdlib `logging.getLogger(__name__)`. No print statements
 

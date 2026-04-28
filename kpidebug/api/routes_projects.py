@@ -185,7 +185,7 @@ def process_project(
     dashboard_store: AbstractDashboardStore = Depends(get_dashboard_store),
     metric_store: AbstractMetricStore = Depends(get_metric_store),
 ) -> dict[str, bool]:
-    from kpidebug.metrics.processor import process_all
+    from kpidebug.processor import process_all
     process_all(
         project_id=project_id,
         data_source_store=data_source_store,

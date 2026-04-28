@@ -270,3 +270,99 @@ class RevenuePerConversionMetric(Metric):
 
 
 register(RevenuePerConversionMetric())
+
+
+class SignupRateMetric(Metric):
+    id = "builtin:ga.signup_rate"
+    name = "Signup Rate"
+    description = (
+        "Percentage of sessions that resulted in a sign_up event"
+    )
+    data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
+    table_keys = [
+        "google_analytics:conversions",
+        "google_analytics:traffic_sources",
+    ]
+    dimensions = CONVERSION_DIMS
+
+    def compute_single(
+        self, ctx, dimensions=None,
+        aggregation=Aggregation.SUM, filters=None,
+        days=30, date=None,
+    ):
+        conv_table = apply_time_filter(
+            ctx.table("google_analytics:conversions"),
+            "date", days, date,
+        )
+        conv_table = conv_table.filter(
+            "event_name", "eq", "sign_up",
+        )
+        conv_table = _apply_filters(conv_table, filters)
+        signups = conv_table.aggregate(
+            "conversions", Aggregation.SUM,
+        )
+
+        traffic_table = apply_time_filter(
+            ctx.table("google_analytics:traffic_sources"),
+            "date", days, date,
+        )
+        sessions = traffic_table.aggregate(
+            "sessions", Aggregation.SUM,
+        )
+
+        value = (signups / sessions * 100) if sessions > 0 else 0.0
+        return [MetricResult(value=value)]
+
+
+register(SignupRateMetric())
+
+
+class SignupToPaidRateMetric(Metric):
+    id = "builtin:ga.signup_to_paid_rate"
+    name = "Signup-to-Paid Rate"
+    description = (
+        "Percentage of sign_up events that converted to "
+        "a paying Stripe customer within the same period"
+    )
+    data_type = MetricDataType.PERCENT
+    source_type = DataSourceType.GOOGLE_ANALYTICS
+    default_aggregation = Aggregation.AVG_DAILY
+    table_keys = [
+        "google_analytics:conversions",
+        "stripe:customers",
+    ]
+    dimensions = []
+
+    def compute_single(
+        self, ctx, dimensions=None,
+        aggregation=Aggregation.SUM, filters=None,
+        days=30, date=None,
+    ):
+        conv_table = apply_time_filter(
+            ctx.table("google_analytics:conversions"),
+            "date", days, date,
+        )
+        conv_table = conv_table.filter(
+            "event_name", "eq", "sign_up",
+        )
+        conv_table = _apply_filters(conv_table, filters)
+        signups = conv_table.aggregate(
+            "conversions", Aggregation.SUM,
+        )
+
+        cust_table = apply_time_filter(
+            ctx.table("stripe:customers"),
+            "created", days, date,
+        )
+        new_customers = float(cust_table.count())
+
+        value = (
+            (new_customers / signups * 100)
+            if signups > 0 else 0.0
+        )
+        return [MetricResult(value=value)]
+
+
+register(SignupToPaidRateMetric())

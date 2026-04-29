@@ -67,16 +67,16 @@ Product distribution weights: Starter 30%, Growth 28%, Pro 22%, Team 13%, Enterp
 Best detection date is event_start + 6 (7d window fully inside event).
 
 ```bash
-python scripts/simulate.py test-startup-demo --date 2025-06-08  # AcquisitionDrop
-python scripts/simulate.py test-startup-demo --date 2025-07-08  # ConversionBreakdown
+python scripts/simulate.py test-startup-demo --date 2025-06-11  # AcquisitionDrop
+python scripts/simulate.py test-startup-demo --date 2025-07-07  # ConversionBreakdown
 python scripts/simulate.py test-startup-demo --date 2025-08-07  # SegmentFailure
-python scripts/simulate.py test-startup-demo --date 2025-09-06  # ReturningUserDrop
-python scripts/simulate.py test-startup-demo --date 2025-10-06  # InvoluntaryChurn
+python scripts/simulate.py test-startup-demo --date 2025-09-07  # ReturningUserDrop
+python scripts/simulate.py test-startup-demo --date 2025-10-07  # InvoluntaryChurn
 python scripts/simulate.py test-startup-demo --date 2025-11-05  # OnboardingFailure
 python scripts/simulate.py test-startup-demo --date 2025-12-05  # PricingMismatch
 python scripts/simulate.py test-startup-demo --date 2026-01-04  # CohortQuality
 python scripts/simulate.py test-startup-demo --date 2026-03-04  # ProductFriction
-python scripts/simulate.py test-startup-demo --date 2026-04-14  # MetricIllusion
+python scripts/simulate.py test-startup-demo --date 2026-04-09  # MetricIllusion
 ```
 
 ## Random Seed

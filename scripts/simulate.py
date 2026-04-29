@@ -56,14 +56,22 @@ def main() -> None:
                 print(f"\n{'=' * 60}")
                 print(f"  {insight.headline}")
                 print(f"  {insight.description}")
+                if insight.confidence.score > 0:
+                    pct = insight.confidence.score * 100
+                    print(f"  Confidence: {pct:.0f}% — {insight.confidence.description}")
                 print(f"  Signals:")
                 for signal in insight.signals:
                     print(f"    - {signal.description}")
                 print(f"  Actions:")
                 for action in insight.actions:
                     print(f"    [{action.priority.value}] {action.description}")
-                if insight.upside_potential.value > 0:
-                    print(f"  Upside: {insight.upside_potential.description}")
+                if insight.revenue_impact.value > 0:
+                    print(f"  {insight.revenue_impact.description}")
+                if insight.counterfactual.value > 0:
+                    desc = insight.counterfactual.description
+                    if insight.counterfactual.revenue_impact.value > 0:
+                        desc += f" | {insight.counterfactual.revenue_impact.description}"
+                    print(f"  {desc}")
     finally:
         pool_manager.close()
 

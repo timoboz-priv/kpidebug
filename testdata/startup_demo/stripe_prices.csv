@@ -1,6 +1,6 @@
 id,product,active,currency,unit_amount,type,recurring_interval,recurring_interval_count,nickname,tax_behavior,created
-price_12caf9c6fbc441e596527512,prod_starter,True,usd,2900,recurring,month,1,Starter Plan,exclusive,2025-03-30T12:00:00Z
-price_49d0be1899954181b1217232,prod_growth,True,usd,3900,recurring,month,1,Growth Plan,exclusive,2025-03-30T12:00:00Z
-price_2706a1b6824b44679edbf40c,prod_pro,True,usd,4900,recurring,month,1,Pro Plan,exclusive,2025-03-30T12:00:00Z
-price_04b24950c0b94bebbb7935eb,prod_team,True,usd,7900,recurring,month,1,Team Plan,exclusive,2025-03-30T12:00:00Z
-price_4ee8017b9c0b46808bcd64d1,prod_enterprise,True,usd,14900,recurring,month,1,Enterprise Plan,exclusive,2025-03-30T12:00:00Z
+price_13b5ae41d29944dca365123b,prod_starter,True,usd,2900,recurring,month,1,Starter Plan,exclusive,2025-03-30T12:00:00Z
+price_10adb98295c24d6cb1812c46,prod_growth,True,usd,3900,recurring,month,1,Growth Plan,exclusive,2025-03-30T12:00:00Z
+price_8b531acc69cb4fefaade2c83,prod_pro,True,usd,4900,recurring,month,1,Pro Plan,exclusive,2025-03-30T12:00:00Z
+price_452f08fd6d254736aec54dc8,prod_team,True,usd,7900,recurring,month,1,Team Plan,exclusive,2025-03-30T12:00:00Z
+price_8a73221a60044f0cb1a74836,prod_enterprise,True,usd,14900,recurring,month,1,Enterprise Plan,exclusive,2025-03-30T12:00:00Z

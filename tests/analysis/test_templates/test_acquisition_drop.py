@@ -55,10 +55,10 @@ class TestAcquisitionDropTemplate:
         assert "acquisition" in result.headline.lower() or "traffic" in result.headline.lower()
         assert len(result.signals) >= 2
         assert result.description
-        assert result.upside_potential.value > 0
-        assert result.upside_potential.metric_id == "builtin:ga.sessions"
-        assert result.upside_potential.metric_name == "Sessions"
-        assert result.upside_potential.description
+        assert result.counterfactual.value > 0
+        assert result.counterfactual.metric_id == "builtin:ga.sessions"
+        assert result.counterfactual.metric_name == "Sessions"
+        assert result.counterfactual.description
 
     def test_does_not_fire_when_sessions_stable(self):
         sessions_values = [100.0] * 14

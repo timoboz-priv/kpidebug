@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field as dataclass_field
+from datetime import date
 
 from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -69,25 +70,36 @@ class CreateMetricRequest:
     computation: str = ""
 
 
-def _extract_time_range(filters: list[TableFilter] | None) -> tuple[int, list[TableFilter]]:
-    if not filters:
-        return 30, []
+def _extract_time_range(
+    filters: list[TableFilter] | None,
+) -> tuple[int, date | None, list[TableFilter]]:
     from datetime import datetime as dt, timezone
+    if not filters:
+        return 30, None, []
     now = dt.now(timezone.utc)
-    days = 30
+    start: dt | None = None
+    end: dt | None = None
     non_time: list[TableFilter] = []
     for f in filters:
         if f.operator in ("gte", "gt") and f.value and "T" in f.value:
             try:
                 start = dt.fromisoformat(f.value.replace("Z", "+00:00"))
-                days = max(1, (now - start).days)
             except ValueError:
                 non_time.append(f)
         elif f.operator in ("lte", "lt") and f.value and "T" in f.value:
-            pass
+            try:
+                end = dt.fromisoformat(f.value.replace("Z", "+00:00"))
+            except ValueError:
+                non_time.append(f)
         else:
             non_time.append(f)
-    return days, non_time
+    end_ref = end or now
+    if start:
+        days = max(1, (end_ref - start).days)
+    else:
+        days = 30
+    end_date = end.date() if end else None
+    return days, end_date, non_time
 
 
 def _to_descriptor(metric: Metric) -> MetricDescriptor:
@@ -233,7 +245,7 @@ def compute_metric_endpoint(
         agg = Aggregation.SUM
 
     dimensions = body.group_by if body.group_by else None
-    days, non_time_filters = _extract_time_range(body.filters)
+    days, end_date, non_time_filters = _extract_time_range(body.filters)
 
     actual_agg = Aggregation.SUM if agg == Aggregation.AVG_DAILY else agg
 
@@ -241,7 +253,7 @@ def compute_metric_endpoint(
         from kpidebug.common.math import aggregate_values
         series = metric.compute_series(
             ctx, dimensions=dimensions, aggregation=Aggregation.SUM,
-            filters=non_time_filters or None, days=days,
+            filters=non_time_filters or None, days=days, date=end_date,
         )
         daily_values = [p.results[0].value if p.results else 0.0 for p in series.points]
         results: list[MetricResult] = [MetricResult(value=aggregate_values(daily_values, Aggregation.AVG_DAILY))]
@@ -253,7 +265,8 @@ def compute_metric_endpoint(
             tb = TimeBucket.DAY
         series = metric.compute_series(
             ctx, dimensions=dimensions, aggregation=actual_agg,
-            filters=non_time_filters or None, days=days, time_bucket=tb,
+            filters=non_time_filters or None, days=days,
+            date=end_date, time_bucket=tb,
         )
         results = []
         for point in series.points:
@@ -264,7 +277,7 @@ def compute_metric_endpoint(
     else:
         results = metric.compute_single(
             ctx, dimensions=dimensions, aggregation=actual_agg,
-            filters=non_time_filters or None, days=days,
+            filters=non_time_filters or None, days=days, date=end_date,
         )
 
     return MetricComputeResponse(

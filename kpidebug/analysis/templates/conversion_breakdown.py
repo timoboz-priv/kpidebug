@@ -5,7 +5,8 @@ import logging
 from kpidebug.analysis.context import AnalysisContext
 from kpidebug.analysis.analyzer_template import InsightTemplate
 from kpidebug.analysis.types import (
-    Action, Insight, Priority, Signal, UpsidePotential,
+    Action, Confidence, Counterfactual, Insight, Priority,
+    RevenueImpact, Signal,
 )
 from kpidebug.analysis.utils import (
     NEGLIGIBLE_THRESHOLD,
@@ -13,6 +14,7 @@ from kpidebug.analysis.utils import (
     ChangeCategory,
     classify_change,
 )
+from kpidebug.data.types import Aggregation
 from kpidebug.metrics.types import MetricSnapshot
 
 logger = logging.getLogger(__name__)
@@ -26,12 +28,20 @@ SIGNUP_RATE_METRIC_ID = "builtin:ga.signup_rate"
 SIGNUP_TO_PAID_METRIC_ID = "builtin:ga.signup_to_paid_rate"
 
 DESCRIPTION = (
-    "Detects when conversion rate drops while traffic remains "
-    "stable, indicating the problem is in the funnel or product "
-    "rather than in acquisition. Correlates with revenue and "
-    "customer metrics and locates the leakiest funnel step by "
-    "comparing signup rate against signup-to-paid rate."
+    "You're getting the same amount of traffic, but fewer "
+    "visitors are becoming customers. Something in the signup "
+    "or purchase experience is turning people away. We checked "
+    "each step of the journey — from first visit to payment — "
+    "to find where you're losing them."
 )
+
+
+def _fmt_dollars(v: float) -> str:
+    if abs(v) >= 1_000_000:
+        return f"${v / 1_000_000:,.1f}M"
+    if abs(v) >= 1_000:
+        return f"${v / 1_000:,.1f}k"
+    return f"${v:,.0f}"
 
 
 class ConversionBreakdownTemplate(InsightTemplate):
@@ -72,9 +82,8 @@ class ConversionBreakdownTemplate(InsightTemplate):
             Signal(
                 metric_id=CONVERSION_RATE_METRIC_ID,
                 description=(
-                    f"Conversion rate dropped "
-                    f"{abs(conversion_change) * 100:.1f}% "
-                    f"over {TREND_WINDOW_DAYS}d"
+                    f"Conversion ↓ "
+                    f"{abs(conversion_change) * 100:.1f}%"
                 ),
                 value=conversion_snapshot.value,
                 change=conversion_change,
@@ -83,8 +92,8 @@ class ConversionBreakdownTemplate(InsightTemplate):
             Signal(
                 metric_id=SESSIONS_METRIC_ID,
                 description=(
-                    f"Traffic stable "
-                    f"({sessions_change * 100:+.1f}%)"
+                    f"Sessions ~ "
+                    f"{sessions_snapshot.value:,.0f} (stable)"
                 ),
                 value=sessions_snapshot.value,
                 change=sessions_change,
@@ -93,8 +102,12 @@ class ConversionBreakdownTemplate(InsightTemplate):
         ]
 
         actions: list[Action] = []
-        self._add_corroborating_signals(ctx, signals)
-        self._add_funnel_analysis(ctx, signals, actions)
+        corroborating = self._add_corroborating_signals(
+            ctx, signals,
+        )
+        funnel_identified = self._add_funnel_analysis(
+            ctx, signals, actions,
+        )
 
         if not actions:
             actions.append(Action(
@@ -105,7 +118,15 @@ class ConversionBreakdownTemplate(InsightTemplate):
                 priority=Priority.HIGH,
             ))
 
-        upside = self._estimate_upside(conversion_snapshot)
+        revenue_impact = self._estimate_revenue_impact(ctx)
+        counterfactual = self._estimate_counterfactual(
+            conversion_snapshot, sessions_snapshot,
+            ctx, revenue_impact,
+        )
+        confidence = self._compute_confidence(
+            conversion_change, sessions_change,
+            corroborating, funnel_identified,
+        )
 
         return Insight(
             headline=(
@@ -115,18 +136,21 @@ class ConversionBreakdownTemplate(InsightTemplate):
             description=DESCRIPTION,
             signals=signals,
             actions=actions,
-            upside_potential=upside,
+            counterfactual=counterfactual,
+            revenue_impact=revenue_impact,
+            confidence=confidence,
         )
 
     def _add_corroborating_signals(
         self,
         ctx: AnalysisContext,
         signals: list[Signal],
-    ) -> None:
+    ) -> int:
+        count = 0
         for metric_id, label in [
-            (CONVERSIONS_METRIC_ID, "Absolute conversions"),
-            (GROSS_REVENUE_METRIC_ID, "Gross revenue"),
-            (CUSTOMER_COUNT_METRIC_ID, "New customers"),
+            (CONVERSIONS_METRIC_ID, "Conversions"),
+            (GROSS_REVENUE_METRIC_ID, "Revenue"),
+            (CUSTOMER_COUNT_METRIC_ID, "Customers"),
         ]:
             dm = ctx.get_dashboard_metric(metric_id)
             if dm is None or dm.snapshot is None:
@@ -142,20 +166,22 @@ class ConversionBreakdownTemplate(InsightTemplate):
                 signals.append(Signal(
                     metric_id=metric_id,
                     description=(
-                        f"{label} also down "
+                        f"{label} ↓ "
                         f"{abs(change) * 100:.1f}%"
                     ),
                     value=dm.snapshot.value,
                     change=change,
                     period_days=TREND_WINDOW_DAYS,
                 ))
+                count += 1
+        return count
 
     def _add_funnel_analysis(
         self,
         ctx: AnalysisContext,
         signals: list[Signal],
         actions: list[Action],
-    ) -> None:
+    ) -> bool:
         signup_dm = ctx.get_dashboard_metric(
             SIGNUP_RATE_METRIC_ID,
         )
@@ -167,9 +193,10 @@ class ConversionBreakdownTemplate(InsightTemplate):
             self._analyze_funnel_steps(
                 signup_dm, s2p_dm, signals, actions,
             )
-            return
+            return True
 
         self._analyze_funnel_approximate(ctx, actions)
+        return False
 
     def _analyze_funnel_steps(
         self,
@@ -212,7 +239,7 @@ class ConversionBreakdownTemplate(InsightTemplate):
             signals.append(Signal(
                 metric_id=SIGNUP_RATE_METRIC_ID,
                 description=(
-                    f"Signup rate dropped "
+                    f"Signup rate ↓ "
                     f"{abs(signup_change) * 100:.1f}%"
                 ),
                 value=signup_dm.snapshot.value,
@@ -224,7 +251,7 @@ class ConversionBreakdownTemplate(InsightTemplate):
             signals.append(Signal(
                 metric_id=SIGNUP_TO_PAID_METRIC_ID,
                 description=(
-                    f"Signup-to-paid rate dropped "
+                    f"Signup-to-paid ↓ "
                     f"{abs(s2p_change) * 100:.1f}%"
                 ),
                 value=s2p_dm.snapshot.value,
@@ -327,12 +354,45 @@ class ConversionBreakdownTemplate(InsightTemplate):
                 priority=Priority.HIGH,
             ))
 
-    def _estimate_upside(
+    def _estimate_revenue_impact(
+        self,
+        ctx: AnalysisContext,
+    ) -> RevenueImpact:
+        rev_dm = ctx.get_dashboard_metric(GROSS_REVENUE_METRIC_ID)
+        if rev_dm is None or rev_dm.snapshot is None:
+            return RevenueImpact()
+
+        rev_change = rev_dm.snapshot.change(
+            TREND_WINDOW_DAYS, rev_dm.aggregation,
+        )
+        if rev_change >= 0:
+            return RevenueImpact()
+
+        recent_rev = rev_dm.snapshot.aggregate_value(
+            TREND_WINDOW_DAYS, rev_dm.aggregation,
+        )
+        previous_rev = (
+            rev_dm.snapshot.aggregate_value(
+                TREND_WINDOW_DAYS * 2, rev_dm.aggregation,
+            )
+            - recent_rev
+        )
+        lost_rev = max(previous_rev - recent_rev, 0.0) / 100
+        return RevenueImpact(
+            value=lost_rev,
+            description=f"Impact: -{_fmt_dollars(lost_rev)} (7d)",
+        )
+
+    def _estimate_counterfactual(
         self,
         conversion_snapshot: MetricSnapshot,
-    ) -> UpsidePotential:
+        sessions_snapshot: MetricSnapshot,
+        ctx: AnalysisContext,
+        revenue_impact: RevenueImpact,
+    ) -> Counterfactual:
         if len(conversion_snapshot.values) < TREND_WINDOW_DAYS * 2:
-            return UpsidePotential()
+            return Counterfactual()
+
         previous_values = conversion_snapshot.values[
             -(TREND_WINDOW_DAYS * 2):-TREND_WINDOW_DAYS
         ]
@@ -341,13 +401,84 @@ class ConversionBreakdownTemplate(InsightTemplate):
         ]
         previous_avg = sum(previous_values) / len(previous_values)
         recent_avg = sum(recent_values) / len(recent_values)
-        lost = max(previous_avg - recent_avg, 0.0)
-        return UpsidePotential(
-            value=lost,
+        lost_pct = max(previous_avg - recent_avg, 0.0)
+        if lost_pct <= 0:
+            return Counterfactual()
+
+        recent_sessions = sessions_snapshot.aggregate_value(
+            TREND_WINDOW_DAYS, Aggregation.SUM,
+        )
+        lost_conversions = recent_sessions * (lost_pct / 100.0)
+
+        rev_recovery = RevenueImpact()
+        rev_dm = ctx.get_dashboard_metric(GROSS_REVENUE_METRIC_ID)
+        if rev_dm and rev_dm.snapshot and lost_conversions > 0:
+            recent_rev = rev_dm.snapshot.aggregate_value(
+                TREND_WINDOW_DAYS, rev_dm.aggregation,
+            )
+            current_conv = recent_avg / 100.0
+            total_conversions = recent_sessions * current_conv
+            if total_conversions > 0:
+                avg_rev = recent_rev / total_conversions / 100
+                recoverable = lost_conversions * avg_rev
+                if revenue_impact.value > 0:
+                    recoverable = min(
+                        recoverable, revenue_impact.value,
+                    )
+                rev_recovery = RevenueImpact(
+                    value=recoverable,
+                    description=(
+                        f"Recovery: "
+                        f"~{_fmt_dollars(recoverable)} (7d)"
+                    ),
+                )
+
+        return Counterfactual(
+            value=lost_pct,
             metric_id=CONVERSION_RATE_METRIC_ID,
             metric_name="Conversion Rate",
             description=(
-                f"~{lost:.1f}pp conversion rate recoverable "
-                f"by fixing the funnel"
+                f"~{lost_conversions:.0f} conversions "
+                f"recoverable at prior {previous_avg:.1f}% rate"
             ),
+            revenue_impact=rev_recovery,
+        )
+
+    def _compute_confidence(
+        self,
+        conversion_change: float,
+        sessions_change: float,
+        corroborating_count: int,
+        funnel_identified: bool,
+    ) -> Confidence:
+        score = 0.4
+        reasons: list[str] = []
+
+        drop_size = abs(conversion_change)
+        if drop_size >= 0.15:
+            score += 0.15
+            reasons.append("large conversion drop")
+        elif drop_size >= 0.05:
+            score += 0.10
+            reasons.append("moderate conversion drop")
+
+        traffic_stability = 1.0 - abs(sessions_change) / NEGLIGIBLE_THRESHOLD
+        score += 0.10 * max(traffic_stability, 0.0)
+        if traffic_stability > 0.5:
+            reasons.append("traffic very stable")
+
+        score += min(corroborating_count * 0.10, 0.20)
+        if corroborating_count > 0:
+            reasons.append(
+                f"{corroborating_count} corroborating metric(s)",
+            )
+
+        if funnel_identified:
+            score += 0.10
+            reasons.append("funnel step pinpointed")
+
+        score = min(score, 1.0)
+        return Confidence(
+            score=score,
+            description=", ".join(reasons).capitalize(),
         )

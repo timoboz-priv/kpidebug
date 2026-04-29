@@ -7,12 +7,16 @@ from enum import Enum
 
 from kpidebug.analysis.analyzer_template import TemplateAnalyzer
 from kpidebug.analysis.context import AnalysisContext
-from kpidebug.analysis.templates.acquisition_drop import (
-    AcquisitionDropTemplate,
-)
-from kpidebug.analysis.templates.conversion_breakdown import (
-    ConversionBreakdownTemplate,
-)
+from kpidebug.analysis.templates.acquisition_drop import AcquisitionDropTemplate
+from kpidebug.analysis.templates.cohort_quality import CohortQualityTemplate
+from kpidebug.analysis.templates.conversion_breakdown import ConversionBreakdownTemplate
+from kpidebug.analysis.templates.involuntary_churn import InvoluntaryChurnTemplate
+from kpidebug.analysis.templates.metric_illusion import MetricIllusionTemplate
+from kpidebug.analysis.templates.onboarding_failure import OnboardingFailureTemplate
+from kpidebug.analysis.templates.pricing_mismatch import PricingMismatchTemplate
+from kpidebug.analysis.templates.product_friction import ProductFrictionTemplate
+from kpidebug.analysis.templates.returning_user_drop import ReturningUserDropTemplate
+from kpidebug.analysis.templates.segment_failure import SegmentFailureTemplate
 from kpidebug.analysis.types import AnalysisResult
 from kpidebug.data.types import Aggregation
 from kpidebug.data.data_source_store_postgres import (
@@ -34,6 +38,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TEMPLATES = [
     AcquisitionDropTemplate(),
     ConversionBreakdownTemplate(),
+    SegmentFailureTemplate(),
+    ReturningUserDropTemplate(),
+    InvoluntaryChurnTemplate(),
+    OnboardingFailureTemplate(),
+    PricingMismatchTemplate(),
+    CohortQualityTemplate(),
+    ProductFrictionTemplate(),
+    MetricIllusionTemplate(),
 ]
 
 

@@ -2,7 +2,7 @@
 
 Produces CSV files in testdata/startup_demo/ for all Stripe and
 Google Analytics tables, with embedded anomaly events that trigger
-the AcquisitionDrop and ConversionBreakdown analysis templates.
+all 10 analysis templates (one anomaly per template).
 
 Usage:
     python scripts/startup_demo/generate_testdata.py
@@ -163,35 +163,116 @@ class AnomalyEvent:
 
 
 ANOMALY_EVENTS = [
-    AnomalyEvent(END_DATE - timedelta(days=90), 14, "acquisition_drop", channel="Organic Search", drop_factor=0.35),
-    AnomalyEvent(END_DATE - timedelta(days=180), 14, "acquisition_drop", channel="Paid Search", drop_factor=0.50),
-    AnomalyEvent(END_DATE - timedelta(days=270), 14, "acquisition_drop", channel="all", drop_factor=0.20),
-    AnomalyEvent(END_DATE - timedelta(days=60), 14, "conversion_drop", drop_factor=0.30),
-    AnomalyEvent(END_DATE - timedelta(days=150), 14, "conversion_drop", drop_factor=0.20),
+    AnomalyEvent(END_DATE - timedelta(days=330), 14, "acquisition_drop", channel="Organic Search", drop_factor=0.50),
+    AnomalyEvent(END_DATE - timedelta(days=300), 14, "conversion_drop", drop_factor=0.35),
+    AnomalyEvent(END_DATE - timedelta(days=270), 14, "segment_drop", country="United States", geo_drop=0.50, global_drop=0.14),
+    AnomalyEvent(END_DATE - timedelta(days=240), 14, "returning_user_drop", drop_factor=0.40),
+    AnomalyEvent(END_DATE - timedelta(days=210), 14, "payment_failure", failure_rate=0.40),
+    AnomalyEvent(END_DATE - timedelta(days=180), 14, "onboarding_break", signup_boost=0.25, s2p_drop=0.35),
+    AnomalyEvent(END_DATE - timedelta(days=150), 14, "pricing_shift", conv_drop=0.25, rev_multiplier=1.50, session_boost=0.06),
+    AnomalyEvent(END_DATE - timedelta(days=120), 14, "s2p_decline", drop_factor=0.55),
+    AnomalyEvent(END_DATE - timedelta(days=90), 35, "engagement_decay", max_drop=0.12),
+    AnomalyEvent(END_DATE - timedelta(days=20), 14, "vanity_traffic", session_boost=0.30, conv_drop=0.25),
 ]
 
 
 def get_session_multiplier(d: date) -> dict[str, float]:
     multipliers: dict[str, float] = {ch["channel_group"]: 1.0 for ch in CHANNELS}
     for event in ANOMALY_EVENTS:
-        if event.event_type != "acquisition_drop" or not event.is_active(d):
+        if not event.is_active(d):
             continue
-        channel = event.params["channel"]
-        drop = event.params["drop_factor"]
-        if channel == "all":
-            for k in multipliers:
-                multipliers[k] *= (1.0 - drop)
-        else:
-            if channel in multipliers:
+        if event.event_type == "acquisition_drop":
+            channel = event.params["channel"]
+            drop = event.params["drop_factor"]
+            if channel == "all":
+                for k in multipliers:
+                    multipliers[k] *= (1.0 - drop)
+            elif channel in multipliers:
                 multipliers[channel] *= (1.0 - drop)
+        elif event.event_type == "segment_drop":
+            for k in multipliers:
+                multipliers[k] *= (1.0 - event.params["global_drop"])
+        elif event.event_type == "pricing_shift":
+            for k in multipliers:
+                multipliers[k] *= (1.0 + event.params["session_boost"])
+        elif event.event_type == "vanity_traffic":
+            for k in multipliers:
+                multipliers[k] *= (1.0 + event.params["session_boost"])
     return multipliers
 
 
 def get_conversion_multiplier(d: date) -> float:
     mult = 1.0
     for event in ANOMALY_EVENTS:
-        if event.event_type == "conversion_drop" and event.is_active(d):
+        if not event.is_active(d):
+            continue
+        if event.event_type == "conversion_drop":
             mult *= (1.0 - event.params["drop_factor"])
+        elif event.event_type == "onboarding_break":
+            mult *= (1.0 + event.params["signup_boost"])
+        elif event.event_type == "pricing_shift":
+            mult *= (1.0 - event.params["conv_drop"])
+        elif event.event_type == "vanity_traffic":
+            mult *= (1.0 - event.params["conv_drop"])
+    return mult
+
+
+def get_geo_multiplier(d: date) -> dict[str, float]:
+    multipliers: dict[str, float] = {}
+    for event in ANOMALY_EVENTS:
+        if event.event_type == "segment_drop" and event.is_active(d):
+            country = event.params["country"]
+            geo_drop = event.params["geo_drop"]
+            global_drop = event.params["global_drop"]
+            extra = (1.0 - geo_drop) / (1.0 - global_drop)
+            multipliers[country] = multipliers.get(country, 1.0) * extra
+    return multipliers
+
+
+def get_returning_user_multiplier(d: date) -> float:
+    mult = 1.0
+    for event in ANOMALY_EVENTS:
+        if event.event_type == "returning_user_drop" and event.is_active(d):
+            mult *= (1.0 - event.params["drop_factor"])
+    return mult
+
+
+def get_payment_failure_rate(d: date) -> float:
+    rate = 0.0
+    for event in ANOMALY_EVENTS:
+        if event.event_type == "payment_failure" and event.is_active(d):
+            rate = max(rate, event.params["failure_rate"])
+    return rate
+
+
+def get_s2p_multiplier(d: date) -> float:
+    mult = 1.0
+    for event in ANOMALY_EVENTS:
+        if not event.is_active(d):
+            continue
+        if event.event_type == "onboarding_break":
+            mult *= (1.0 - event.params["s2p_drop"])
+        elif event.event_type == "s2p_decline":
+            mult *= (1.0 - event.params["drop_factor"])
+    return mult
+
+
+def get_revenue_multiplier(d: date) -> float:
+    mult = 1.0
+    for event in ANOMALY_EVENTS:
+        if event.event_type == "pricing_shift" and event.is_active(d):
+            mult *= event.params["rev_multiplier"]
+    return mult
+
+
+def get_engagement_multiplier(d: date) -> float:
+    mult = 1.0
+    for event in ANOMALY_EVENTS:
+        if event.event_type == "engagement_decay" and event.is_active(d):
+            days_in = (d - event.start).days
+            progress = days_in / event.duration_days
+            max_drop = event.params["max_drop"]
+            mult *= (1.0 - max_drop * progress)
     return mult
 
 
@@ -275,6 +356,12 @@ def generate() -> None:
 
         session_multipliers = get_session_multiplier(d)
         conversion_mult = get_conversion_multiplier(d)
+        geo_mult = get_geo_multiplier(d)
+        returning_mult = get_returning_user_multiplier(d)
+        failure_rate = get_payment_failure_rate(d)
+        s2p_mult = get_s2p_multiplier(d)
+        rev_mult = get_revenue_multiplier(d)
+        engagement_mult = get_engagement_multiplier(d)
 
         # --- GA: Traffic Sources (per channel per day) ---
         total_sessions = 0
@@ -303,9 +390,10 @@ def generate() -> None:
             new_u = int(users * rng.uniform(0.30, 0.50))
             pvs = int(sessions * rng.uniform(2.5, 4.0))
             engaged = int(sessions * rng.uniform(0.50, 0.65))
-            bounce = rng.uniform(0.38, 0.52)
-            engage_rate = 1.0 - bounce + rng.uniform(-0.02, 0.02)
-            avg_dur = rng.uniform(90, 200)
+            bounce_base = rng.uniform(0.38, 0.52)
+            bounce = 1.0 - (1.0 - bounce_base) * engagement_mult
+            engage_rate = (1.0 - bounce_base + rng.uniform(-0.02, 0.02)) * engagement_mult
+            avg_dur = rng.uniform(90, 200) * engagement_mult
             evts = int(sessions * rng.uniform(3.0, 6.0))
 
             effective_conv_rate = base_conversion_rate * conversion_mult
@@ -424,8 +512,8 @@ def generate() -> None:
             ev_users = int(ev_count * rng.uniform(0.3, 0.7))
             ev_per_user = round(ev_count / max(ev_users, 1), 2)
             ev_value = round(ev_count * rng.uniform(0.5, 2.0), 2) if ev_name in ("purchase", "add_to_cart") else 0.0
-            ev_convs = total_conversions if ev_name == "sign_up" else (int(total_conversions * 0.6 * rng.uniform(0.8, 1.2)) if ev_name == "purchase" else 0)
-            ev_rev = round(ev_convs * rng.uniform(30, 60), 2) if ev_name == "purchase" else 0.0
+            ev_convs = total_conversions if ev_name == "sign_up" else (int(total_conversions * 0.6 * s2p_mult * rng.uniform(0.8, 1.2)) if ev_name == "purchase" else 0)
+            ev_rev = round(ev_convs * rng.uniform(30, 60) * rev_mult, 2) if ev_name == "purchase" else 0.0
 
             ga_events.append({
                 "date": iso(d, 0, 0),
@@ -440,7 +528,8 @@ def generate() -> None:
 
         # --- GA: Geography ---
         for geo_i, geo in enumerate(COUNTRIES):
-            g_sessions = int(total_sessions * GEO_WEIGHTS[geo_i] * rng.uniform(0.80, 1.20))
+            g_geo_mult = geo_mult.get(geo["country"], 1.0)
+            g_sessions = int(total_sessions * GEO_WEIGHTS[geo_i] * rng.uniform(0.80, 1.20) * g_geo_mult)
             g_users = int(g_sessions * rng.uniform(0.70, 0.90))
             g_new = int(g_users * rng.uniform(0.30, 0.50))
             g_pvs = int(g_sessions * rng.uniform(2.5, 4.0))
@@ -495,7 +584,7 @@ def generate() -> None:
 
         # --- GA: Users (new vs returning) ---
         new_sessions = int(total_sessions * rng.uniform(0.35, 0.45))
-        ret_sessions = total_sessions - new_sessions
+        ret_sessions = int((total_sessions - new_sessions) * returning_mult)
         for user_type, u_sessions in [("new", new_sessions), ("returning", ret_sessions)]:
             u_users = int(u_sessions * rng.uniform(0.75, 0.90))
             u_new = u_users if user_type == "new" else 0
@@ -555,7 +644,7 @@ def generate() -> None:
             if conv_ev == "sign_up":
                 c_convs = day_signups
             elif conv_ev == "purchase":
-                c_convs = int(day_signups * signup_to_paid_rate * rng.uniform(0.8, 1.2))
+                c_convs = int(day_signups * signup_to_paid_rate * s2p_mult * rng.uniform(0.8, 1.2))
             else:
                 c_convs = int(day_signups * rng.uniform(0.6, 1.0))
 
@@ -565,7 +654,7 @@ def generate() -> None:
                 cc_users = max(1, int(cc * rng.uniform(0.8, 1.0)))
                 cc_sessions = int(cc_users * rng.uniform(1.0, 1.5))
                 cc_evts = int(cc_sessions * rng.uniform(2, 5))
-                cc_rev = round(cc * rng.uniform(30, 60), 2) if conv_ev == "purchase" else 0.0
+                cc_rev = round(cc * rng.uniform(30, 60) * rev_mult, 2) if conv_ev == "purchase" else 0.0
 
                 ga_conversions.append({
                     "date": iso(d, 0, 0),
@@ -581,7 +670,7 @@ def generate() -> None:
                 })
 
         # --- Stripe: new customers & subscriptions for the day ---
-        new_paid = int(day_signups * signup_to_paid_rate * rng.uniform(0.85, 1.15))
+        new_paid = int(day_signups * signup_to_paid_rate * s2p_mult * rng.uniform(0.85, 1.15))
         new_paid = max(0, new_paid)
 
         daily_new_customers = []
@@ -722,68 +811,117 @@ def generate() -> None:
             charge_time = iso(d, rng.randint(0, 6), rng.randint(0, 59))
             new_period_end = d + timedelta(days=30)
 
-            charge = {
-                "id": charge_id,
-                "amount": product["price_cents"],
-                "amount_captured": product["price_cents"],
-                "amount_refunded": 0,
-                "currency": "usd",
-                "status": "succeeded",
-                "paid": True,
-                "captured": True,
-                "refunded": False,
-                "disputed": False,
-                "description": f"Subscription renewal - {product['name']}",
-                "customer": sub["customer"],
-                "invoice": inv_id,
-                "payment_intent": uid("pi"),
-                "payment_method_type": "card",
-                "card_brand": weighted_choice(rng, CARD_BRANDS, CARD_WEIGHTS),
-                "card_last4": f"{rng.randint(1000, 9999)}",
-                "failure_code": None,
-                "failure_message": None,
-                "receipt_email": None,
-                "created": charge_time,
-            }
-            all_charges.append(charge)
+            payment_failed = failure_rate > 0 and rng.random() < failure_rate
 
-            fee = int(product["price_cents"] * 0.029) + 30
-            net = product["price_cents"] - fee
-            all_balance_txns.append({
-                "id": uid("txn"),
-                "amount": product["price_cents"],
-                "fee": fee,
-                "net": net,
-                "currency": "usd",
-                "type": "charge",
-                "status": "available",
-                "source": charge_id,
-                "description": f"Renewal for {product['name']}",
-                "reporting_category": "charge",
-                "available_on": iso(d + timedelta(days=2), 0, 0),
-                "created": charge_time,
-            })
+            if payment_failed:
+                charge = {
+                    "id": charge_id,
+                    "amount": product["price_cents"],
+                    "amount_captured": 0,
+                    "amount_refunded": 0,
+                    "currency": "usd",
+                    "status": "failed",
+                    "paid": False,
+                    "captured": False,
+                    "refunded": False,
+                    "disputed": False,
+                    "description": f"Subscription renewal - {product['name']}",
+                    "customer": sub["customer"],
+                    "invoice": inv_id,
+                    "payment_intent": uid("pi"),
+                    "payment_method_type": "card",
+                    "card_brand": weighted_choice(rng, CARD_BRANDS, CARD_WEIGHTS),
+                    "card_last4": f"{rng.randint(1000, 9999)}",
+                    "failure_code": rng.choice(["card_declined", "expired_card", "insufficient_funds"]),
+                    "failure_message": "Your card was declined.",
+                    "receipt_email": None,
+                    "created": charge_time,
+                }
+                all_charges.append(charge)
 
-            all_invoices.append({
-                "id": inv_id,
-                "number": f"INV-{len(all_invoices) + 1:06d}",
-                "amount_due": product["price_cents"],
-                "amount_paid": product["price_cents"],
-                "amount_remaining": 0,
-                "subtotal": product["price_cents"],
-                "total": product["price_cents"],
-                "currency": "usd",
-                "status": "paid",
-                "paid": True,
-                "customer": sub["customer"],
-                "subscription": sub["id"],
-                "collection_method": "charge_automatically",
-                "attempt_count": 1,
-                "due_date": None,
-                "period_start": iso(d, 0, 0),
-                "period_end": iso(new_period_end, 0, 0),
-                "created": charge_time,
-            })
+                all_invoices.append({
+                    "id": inv_id,
+                    "number": f"INV-{len(all_invoices) + 1:06d}",
+                    "amount_due": product["price_cents"],
+                    "amount_paid": 0,
+                    "amount_remaining": product["price_cents"],
+                    "subtotal": product["price_cents"],
+                    "total": product["price_cents"],
+                    "currency": "usd",
+                    "status": "open",
+                    "paid": False,
+                    "customer": sub["customer"],
+                    "subscription": sub["id"],
+                    "collection_method": "charge_automatically",
+                    "attempt_count": 1,
+                    "due_date": None,
+                    "period_start": iso(d, 0, 0),
+                    "period_end": iso(new_period_end, 0, 0),
+                    "created": charge_time,
+                })
+            else:
+                charge = {
+                    "id": charge_id,
+                    "amount": product["price_cents"],
+                    "amount_captured": product["price_cents"],
+                    "amount_refunded": 0,
+                    "currency": "usd",
+                    "status": "succeeded",
+                    "paid": True,
+                    "captured": True,
+                    "refunded": False,
+                    "disputed": False,
+                    "description": f"Subscription renewal - {product['name']}",
+                    "customer": sub["customer"],
+                    "invoice": inv_id,
+                    "payment_intent": uid("pi"),
+                    "payment_method_type": "card",
+                    "card_brand": weighted_choice(rng, CARD_BRANDS, CARD_WEIGHTS),
+                    "card_last4": f"{rng.randint(1000, 9999)}",
+                    "failure_code": None,
+                    "failure_message": None,
+                    "receipt_email": None,
+                    "created": charge_time,
+                }
+                all_charges.append(charge)
+
+                fee = int(product["price_cents"] * 0.029) + 30
+                net = product["price_cents"] - fee
+                all_balance_txns.append({
+                    "id": uid("txn"),
+                    "amount": product["price_cents"],
+                    "fee": fee,
+                    "net": net,
+                    "currency": "usd",
+                    "type": "charge",
+                    "status": "available",
+                    "source": charge_id,
+                    "description": f"Renewal for {product['name']}",
+                    "reporting_category": "charge",
+                    "available_on": iso(d + timedelta(days=2), 0, 0),
+                    "created": charge_time,
+                })
+
+                all_invoices.append({
+                    "id": inv_id,
+                    "number": f"INV-{len(all_invoices) + 1:06d}",
+                    "amount_due": product["price_cents"],
+                    "amount_paid": product["price_cents"],
+                    "amount_remaining": 0,
+                    "subtotal": product["price_cents"],
+                    "total": product["price_cents"],
+                    "currency": "usd",
+                    "status": "paid",
+                    "paid": True,
+                    "customer": sub["customer"],
+                    "subscription": sub["id"],
+                    "collection_method": "charge_automatically",
+                    "attempt_count": 1,
+                    "due_date": None,
+                    "period_start": iso(d, 0, 0),
+                    "period_end": iso(new_period_end, 0, 0),
+                    "created": charge_time,
+                })
 
             sub["current_period_start"] = iso(d, 0, 0)
             sub["current_period_end"] = iso(new_period_end, 0, 0)
@@ -1022,37 +1160,35 @@ Product distribution weights: Starter 30%, Growth 28%, Pro 22%, Team 13%, Enterp
 - **Engagement rate**: ~50-65%
 - **Avg session duration**: ~90-200s
 
-## Embedded Anomaly Events
+## Embedded Anomaly Events (1 per template)
 
-### AcquisitionDrop events (sessions drop + conversion stable)
-| # | Date Range | Description | Drop |
-|---|-----------|-------------|------|
-| 1 | {(END_DATE - timedelta(days=90)).isoformat()} to {(END_DATE - timedelta(days=76)).isoformat()} | Organic Search traffic drop (algorithm change) | -35% |
-| 2 | {(END_DATE - timedelta(days=180)).isoformat()} to {(END_DATE - timedelta(days=166)).isoformat()} | Paid Search traffic drop (budget cut) | -50% |
-| 3 | {(END_DATE - timedelta(days=270)).isoformat()} to {(END_DATE - timedelta(days=256)).isoformat()} | Overall session drop (holiday dip) | -20% |
-
-### ConversionBreakdown events (conversion drops + sessions stable)
-| # | Date Range | Description | Drop |
-|---|-----------|-------------|------|
-| 1 | {(END_DATE - timedelta(days=60)).isoformat()} to {(END_DATE - timedelta(days=46)).isoformat()} | Conversion rate drop (checkout bug) | -30% |
-| 2 | {(END_DATE - timedelta(days=150)).isoformat()} to {(END_DATE - timedelta(days=136)).isoformat()} | Conversion rate drop (pricing page change) | -20% |
+| # | Template | Date Range | Description |
+|---|----------|-----------|-------------|
+| 1 | AcquisitionDrop | {(END_DATE - timedelta(days=330)).isoformat()} to {(END_DATE - timedelta(days=316)).isoformat()} | Organic Search -50% |
+| 2 | ConversionBreakdown | {(END_DATE - timedelta(days=300)).isoformat()} to {(END_DATE - timedelta(days=286)).isoformat()} | Conversion rate -35% |
+| 3 | SegmentFailure | {(END_DATE - timedelta(days=270)).isoformat()} to {(END_DATE - timedelta(days=256)).isoformat()} | US geo -50%, global -14% |
+| 4 | ReturningUserDrop | {(END_DATE - timedelta(days=240)).isoformat()} to {(END_DATE - timedelta(days=226)).isoformat()} | Returning users -40% |
+| 5 | InvoluntaryChurn | {(END_DATE - timedelta(days=210)).isoformat()} to {(END_DATE - timedelta(days=196)).isoformat()} | 40% renewals fail |
+| 6 | OnboardingFailure | {(END_DATE - timedelta(days=180)).isoformat()} to {(END_DATE - timedelta(days=166)).isoformat()} | Signups +25%, s2p -35% |
+| 7 | PricingMismatch | {(END_DATE - timedelta(days=150)).isoformat()} to {(END_DATE - timedelta(days=136)).isoformat()} | Conv -25%, rev/conv x1.5 |
+| 8 | CohortQuality | {(END_DATE - timedelta(days=120)).isoformat()} to {(END_DATE - timedelta(days=106)).isoformat()} | s2p -55% |
+| 9 | ProductFriction | {(END_DATE - timedelta(days=90)).isoformat()} to {(END_DATE - timedelta(days=55)).isoformat()} | Gradual engagement -12% |
+| 10 | MetricIllusion | {(END_DATE - timedelta(days=20)).isoformat()} to {(END_DATE - timedelta(days=6)).isoformat()} | Sessions +30%, conv -25% |
 
 ## Simulation Dates for Verification
-Best detection date is event_start + 6: recent 7 days fully inside the event,
-previous 7 days fully outside.
+Best detection date is event_start + 6 (7d window fully inside event).
 
 ```bash
-# AcquisitionDrop (event 1 - organic search drop)
-python scripts/simulate.py test-startup-demo --date {(END_DATE - timedelta(days=84)).isoformat()}
-
-# AcquisitionDrop (event 2 - paid search drop)
-python scripts/simulate.py test-startup-demo --date {(END_DATE - timedelta(days=174)).isoformat()}
-
-# ConversionBreakdown (event 1 - checkout bug)
-python scripts/simulate.py test-startup-demo --date {(END_DATE - timedelta(days=54)).isoformat()}
-
-# ConversionBreakdown (event 2 - pricing page change)
-python scripts/simulate.py test-startup-demo --date {(END_DATE - timedelta(days=144)).isoformat()}
+python scripts/simulate.py test-startup-demo --date 2025-06-11  # AcquisitionDrop
+python scripts/simulate.py test-startup-demo --date 2025-07-07  # ConversionBreakdown
+python scripts/simulate.py test-startup-demo --date 2025-08-07  # SegmentFailure
+python scripts/simulate.py test-startup-demo --date 2025-09-07  # ReturningUserDrop
+python scripts/simulate.py test-startup-demo --date 2025-10-07  # InvoluntaryChurn
+python scripts/simulate.py test-startup-demo --date 2025-11-05  # OnboardingFailure
+python scripts/simulate.py test-startup-demo --date 2025-12-05  # PricingMismatch
+python scripts/simulate.py test-startup-demo --date 2026-01-04  # CohortQuality
+python scripts/simulate.py test-startup-demo --date 2026-03-04  # ProductFriction
+python scripts/simulate.py test-startup-demo --date 2026-04-09  # MetricIllusion
 ```
 
 ## Random Seed

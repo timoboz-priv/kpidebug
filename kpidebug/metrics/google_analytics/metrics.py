@@ -323,15 +323,14 @@ class SignupToPaidRateMetric(Metric):
     id = "builtin:ga.signup_to_paid_rate"
     name = "Signup-to-Paid Rate"
     description = (
-        "Percentage of sign_up events that converted to "
-        "a paying Stripe customer within the same period"
+        "Percentage of sign_up events that resulted in a "
+        "purchase event within the same period"
     )
     data_type = MetricDataType.PERCENT
     source_type = DataSourceType.GOOGLE_ANALYTICS
     default_aggregation = Aggregation.AVG_DAILY
     table_keys = [
         "google_analytics:conversions",
-        "stripe:customers",
     ]
     dimensions = []
 
@@ -344,22 +343,25 @@ class SignupToPaidRateMetric(Metric):
             ctx.table("google_analytics:conversions"),
             "date", days, date,
         )
-        conv_table = conv_table.filter(
+
+        signup_table = conv_table.filter(
             "event_name", "eq", "sign_up",
         )
-        conv_table = _apply_filters(conv_table, filters)
-        signups = conv_table.aggregate(
+        signup_table = _apply_filters(signup_table, filters)
+        signups = signup_table.aggregate(
             "conversions", Aggregation.SUM,
         )
 
-        cust_table = apply_time_filter(
-            ctx.table("stripe:customers"),
-            "created", days, date,
+        purchase_table = conv_table.filter(
+            "event_name", "eq", "purchase",
         )
-        new_customers = float(cust_table.count())
+        purchase_table = _apply_filters(purchase_table, filters)
+        purchases = purchase_table.aggregate(
+            "conversions", Aggregation.SUM,
+        )
 
         value = (
-            (new_customers / signups * 100)
+            (purchases / signups * 100)
             if signups > 0 else 0.0
         )
         return [MetricResult(value=value)]

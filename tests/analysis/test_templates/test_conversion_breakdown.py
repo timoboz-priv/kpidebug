@@ -57,10 +57,10 @@ class TestConversionBreakdownTemplate:
         assert "conversion" in result.headline.lower()
         assert len(result.signals) >= 2
         assert result.description
-        assert result.upside_potential.value > 0
-        assert result.upside_potential.metric_id == "builtin:ga.conversion_rate"
-        assert result.upside_potential.metric_name == "Conversion Rate"
-        assert result.upside_potential.description
+        assert result.counterfactual.value > 0
+        assert result.counterfactual.metric_id == "builtin:ga.conversion_rate"
+        assert result.counterfactual.metric_name == "Conversion Rate"
+        assert result.counterfactual.description
 
     def test_does_not_fire_when_traffic_also_dropping(self):
         sessions_values = [1000.0] * 7 + [700.0] * 7

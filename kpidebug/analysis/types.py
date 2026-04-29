@@ -32,10 +32,27 @@ class Action:
 
 @dataclass_json
 @dataclass
-class UpsidePotential:
+class RevenueImpact:
+    value: float = 0.0
+    description: str = ""
+
+
+@dataclass_json
+@dataclass
+class Counterfactual:
     value: float = 0.0
     metric_id: str = ""
     metric_name: str = ""
+    description: str = ""
+    revenue_impact: RevenueImpact = dataclass_field(
+        default_factory=RevenueImpact
+    )
+
+
+@dataclass_json
+@dataclass
+class Confidence:
+    score: float = 0.0
     description: str = ""
 
 
@@ -46,8 +63,14 @@ class Insight:
     description: str = ""
     signals: list[Signal] = dataclass_field(default_factory=list)
     actions: list[Action] = dataclass_field(default_factory=list)
-    upside_potential: UpsidePotential = dataclass_field(
-        default_factory=UpsidePotential
+    counterfactual: Counterfactual = dataclass_field(
+        default_factory=Counterfactual
+    )
+    revenue_impact: RevenueImpact = dataclass_field(
+        default_factory=RevenueImpact
+    )
+    confidence: Confidence = dataclass_field(
+        default_factory=Confidence
     )
 
 

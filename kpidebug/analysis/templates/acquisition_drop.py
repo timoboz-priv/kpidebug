@@ -5,7 +5,8 @@ import logging
 from kpidebug.analysis.context import AnalysisContext
 from kpidebug.analysis.analyzer_template import InsightTemplate
 from kpidebug.analysis.types import (
-    Action, Insight, Priority, Signal, UpsidePotential,
+    Action, Confidence, Counterfactual, Insight, Priority,
+    RevenueImpact, Signal,
 )
 from kpidebug.analysis.utils import (
     NEGLIGIBLE_THRESHOLD,
@@ -20,15 +21,25 @@ logger = logging.getLogger(__name__)
 
 SESSIONS_METRIC_ID = "builtin:ga.sessions"
 CONVERSION_RATE_METRIC_ID = "builtin:ga.conversion_rate"
+GROSS_REVENUE_METRIC_ID = "builtin:stripe.gross_revenue"
 
 CHANNEL_DROP_THRESHOLD = -0.30
 
 DESCRIPTION = (
-    "Detects when website traffic drops significantly while "
-    "conversion rate remains stable, indicating the problem is "
-    "in acquisition (fewer visitors) rather than in the product "
-    "or funnel. Drills into traffic channels to find the source."
+    "Fewer people are visiting your site, but those who do "
+    "convert at the same rate as before. That means your product "
+    "and pricing are fine — the issue is that fewer potential "
+    "customers are finding you. We looked at your traffic "
+    "channels to pinpoint where the drop is coming from."
 )
+
+
+def _fmt_dollars(v: float) -> str:
+    if abs(v) >= 1_000_000:
+        return f"${v / 1_000_000:,.1f}M"
+    if abs(v) >= 1_000:
+        return f"${v / 1_000:,.1f}k"
+    return f"${v:,.0f}"
 
 
 class AcquisitionDropTemplate(InsightTemplate):
@@ -69,9 +80,7 @@ class AcquisitionDropTemplate(InsightTemplate):
             Signal(
                 metric_id=SESSIONS_METRIC_ID,
                 description=(
-                    f"Sessions dropped "
-                    f"{abs(sessions_change) * 100:.1f}% "
-                    f"over {TREND_WINDOW_DAYS}d"
+                    f"Sessions ↓ {abs(sessions_change) * 100:.1f}%"
                 ),
                 value=sessions_snapshot.value,
                 change=sessions_change,
@@ -80,8 +89,9 @@ class AcquisitionDropTemplate(InsightTemplate):
             Signal(
                 metric_id=CONVERSION_RATE_METRIC_ID,
                 description=(
-                    f"Conversion rate stable "
-                    f"({conversion_change * 100:+.1f}%)"
+                    f"Conversion rate ~ "
+                    f"{conversion_snapshot.value:.1f}% "
+                    f"(stable)"
                 ),
                 value=conversion_snapshot.value,
                 change=conversion_change,
@@ -99,12 +109,9 @@ class AcquisitionDropTemplate(InsightTemplate):
             ),
         ]
 
-        upside = self._estimate_upside(
-            sessions_snapshot, sessions_dm.aggregation,
-        )
-
         channel_signal = self._check_channel_breakdown(ctx)
-        if channel_signal is not None:
+        has_channel = channel_signal is not None
+        if has_channel:
             signals.append(channel_signal)
             actions.insert(0, Action(
                 description=(
@@ -112,6 +119,15 @@ class AcquisitionDropTemplate(InsightTemplate):
                 ),
                 priority=Priority.HIGH,
             ))
+
+        revenue_impact = self._estimate_revenue_impact(ctx)
+        counterfactual = self._estimate_counterfactual(
+            sessions_snapshot, sessions_dm.aggregation,
+            conversion_snapshot, ctx, revenue_impact,
+        )
+        confidence = self._compute_confidence(
+            conversion_change, sessions_category, has_channel,
+        )
 
         return Insight(
             headline=(
@@ -121,7 +137,9 @@ class AcquisitionDropTemplate(InsightTemplate):
             description=DESCRIPTION,
             signals=signals,
             actions=actions,
-            upside_potential=upside,
+            counterfactual=counterfactual,
+            revenue_impact=revenue_impact,
+            confidence=confidence,
         )
 
     def _check_channel_breakdown(
@@ -190,7 +208,7 @@ class AcquisitionDropTemplate(InsightTemplate):
             return Signal(
                 metric_id=SESSIONS_METRIC_ID,
                 description=(
-                    f"Channel '{worst_channel}' dropped "
+                    f"{worst_channel} ↓ "
                     f"{abs(worst_change) * 100:.0f}%"
                 ),
                 value=channel_recent.get(worst_channel, 0.0),
@@ -200,12 +218,44 @@ class AcquisitionDropTemplate(InsightTemplate):
 
         return None
 
-    def _estimate_upside(
+    def _estimate_revenue_impact(
+        self,
+        ctx: AnalysisContext,
+    ) -> RevenueImpact:
+        rev_dm = ctx.get_dashboard_metric(GROSS_REVENUE_METRIC_ID)
+        if rev_dm is None or rev_dm.snapshot is None:
+            return RevenueImpact()
+
+        rev_change = rev_dm.snapshot.change(
+            TREND_WINDOW_DAYS, rev_dm.aggregation,
+        )
+        if rev_change >= 0:
+            return RevenueImpact()
+
+        recent_rev = rev_dm.snapshot.aggregate_value(
+            TREND_WINDOW_DAYS, rev_dm.aggregation,
+        )
+        previous_rev = (
+            rev_dm.snapshot.aggregate_value(
+                TREND_WINDOW_DAYS * 2, rev_dm.aggregation,
+            )
+            - recent_rev
+        )
+        lost_rev = max(previous_rev - recent_rev, 0.0) / 100
+        return RevenueImpact(
+            value=lost_rev,
+            description=f"Impact: -{_fmt_dollars(lost_rev)} (7d)",
+        )
+
+    def _estimate_counterfactual(
         self,
         sessions_snapshot: MetricSnapshot,
         aggregation: Aggregation,
-    ) -> UpsidePotential:
-        previous = (
+        conversion_snapshot: MetricSnapshot,
+        ctx: AnalysisContext,
+        revenue_impact: RevenueImpact,
+    ) -> Counterfactual:
+        previous_sessions = (
             sessions_snapshot.aggregate_value(
                 TREND_WINDOW_DAYS * 2, aggregation,
             )
@@ -213,16 +263,73 @@ class AcquisitionDropTemplate(InsightTemplate):
                 TREND_WINDOW_DAYS, aggregation,
             )
         )
-        recent = sessions_snapshot.aggregate_value(
+        recent_sessions = sessions_snapshot.aggregate_value(
             TREND_WINDOW_DAYS, aggregation,
         )
-        lost = max(previous - recent, 0.0)
-        return UpsidePotential(
-            value=lost,
+        lost_sessions = max(previous_sessions - recent_sessions, 0.0)
+        if lost_sessions <= 0:
+            return Counterfactual()
+
+        conv_rate = conversion_snapshot.value / 100.0
+        lost_conversions = lost_sessions * conv_rate
+
+        rev_dm = ctx.get_dashboard_metric(GROSS_REVENUE_METRIC_ID)
+        rev_recovery = RevenueImpact()
+        if rev_dm and rev_dm.snapshot and recent_sessions > 0:
+            recent_rev = rev_dm.snapshot.aggregate_value(
+                TREND_WINDOW_DAYS, rev_dm.aggregation,
+            )
+            rev_per_session = recent_rev / recent_sessions / 100
+            recoverable = lost_sessions * rev_per_session
+            recoverable = min(recoverable, revenue_impact.value) if revenue_impact.value > 0 else recoverable
+            rev_recovery = RevenueImpact(
+                value=recoverable,
+                description=(
+                    f"Recovery: ~{_fmt_dollars(recoverable)} (7d)"
+                ),
+            )
+
+        return Counterfactual(
+            value=lost_conversions,
             metric_id=SESSIONS_METRIC_ID,
             metric_name="Sessions",
             description=(
-                f"~{lost:.0f} sessions recoverable by "
-                f"restoring traffic to prior levels"
+                f"~{lost_sessions:.0f} sessions / "
+                f"~{lost_conversions:.0f} conversions "
+                f"recoverable"
             ),
+            revenue_impact=rev_recovery,
+        )
+
+    def _compute_confidence(
+        self,
+        conversion_change: float,
+        sessions_category: ChangeCategory,
+        has_channel_breakdown: bool,
+    ) -> Confidence:
+        score = 0.5
+        reasons: list[str] = []
+
+        if sessions_category == ChangeCategory.LARGE_DROP:
+            score += 0.15
+            reasons.append("large traffic drop")
+        else:
+            score += 0.05
+            reasons.append("moderate traffic drop")
+
+        conv_stability = 1.0 - abs(conversion_change) / NEGLIGIBLE_THRESHOLD
+        score += 0.15 * max(conv_stability, 0.0)
+        if conv_stability > 0.5:
+            reasons.append("conversion very stable")
+        else:
+            reasons.append("conversion mostly stable")
+
+        if has_channel_breakdown:
+            score += 0.15
+            reasons.append("specific channel identified")
+
+        score = min(score, 1.0)
+        return Confidence(
+            score=score,
+            description=", ".join(reasons).capitalize(),
         )

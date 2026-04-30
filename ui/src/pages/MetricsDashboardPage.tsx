@@ -13,13 +13,23 @@ import {
   Button,
   ToggleButton,
   ToggleButtonGroup,
+  Chip,
+  Collapse,
+  LinearProgress,
 } from "@mui/material";
 import {
   Close as CloseIcon,
   Search as SearchIcon,
-  BugReport as IssueIcon,
   Explore as ExploreIcon,
   Refresh as RefreshIcon,
+  ExpandMore as ExpandMoreIcon,
+  KeyboardArrowRight as ArrowRightIcon,
+  TrendingDown as TrendingDownIcon,
+  TrendingUp as TrendingUpIcon,
+  Warning as WarningIcon,
+  ErrorOutlined as ErrorIcon,
+  Info as InfoIcon,
+  LightbulbOutlined as LightbulbIcon,
 } from "@mui/icons-material";
 import {
   AreaChart,
@@ -33,7 +43,9 @@ import { useNavigate } from "react-router-dom";
 import { useProject } from "../contexts/ProjectContext";
 import {
   DashboardMetricData,
+  InsightData,
   computeDashboardMetrics,
+  fetchDashboardInsights,
   removeDashboardMetric,
   processProject,
 } from "../api/dataSources";
@@ -101,6 +113,7 @@ export default function MetricsDashboardPage() {
 
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(1);
   const [metrics, setMetrics] = useState<DashboardMetricData[]>([]);
+  const [insights, setInsights] = useState<InsightData[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,8 +127,12 @@ export default function MetricsDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await computeDashboardMetrics(projectId);
-      setMetrics(res.metrics);
+      const [metricsRes, insightsRes] = await Promise.all([
+        computeDashboardMetrics(projectId),
+        fetchDashboardInsights(projectId),
+      ]);
+      setMetrics(metricsRes.metrics);
+      setInsights(insightsRes);
     } catch {
       setError("Failed to load dashboard metrics");
     } finally {
@@ -263,21 +280,293 @@ export default function MetricsDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Placeholder: Detected issues */}
-      <Card>
-        <CardContent sx={{ py: 2, "&:last-child": { pb: 2 } }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-            <IssueIcon fontSize="small" color="disabled" />
-            <Typography variant="subtitle2" color="text.secondary">
-              Detected Issues
+      {/* Detected issues */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography variant="h5">Detected Issues</Typography>
+          {insights.length > 0 && (
+            <Chip
+              label={`${insights.length} active`}
+              size="small"
+              color="error"
+              variant="outlined"
+              sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+            />
+          )}
+        </Box>
+      </Box>
+      {insights.length === 0 ? (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ textAlign: "center", py: 5 }}>
+            <Box sx={{ mb: 1, color: "text.disabled" }}>
+              <InfoIcon sx={{ fontSize: 36 }} />
+            </Box>
+            <Typography variant="body1" color="text.secondary">
+              No issues detected
             </Typography>
-          </Box>
-          <Typography variant="body2" color="text.disabled">
-            No issues detected yet. The system will surface anomalies and root causes here.
-          </Typography>
-        </CardContent>
-      </Card>
+            <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>
+              The analysis engine will surface anomalies, root causes, and recommended actions here.
+            </Typography>
+          </CardContent>
+        </Card>
+      ) : (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(480px, 1fr))",
+            gap: 2,
+            mb: 3,
+          }}
+        >
+          {insights.map((insight) => (
+            <InsightCard key={insight.id} insight={insight} />
+          ))}
+        </Box>
+      )}
     </Box>
+  );
+}
+
+const SEVERITY_CONFIG: Record<string, { color: string; bg: string; bgHover: string; icon: typeof ErrorIcon; label: string }> = {
+  high: { color: "#c62828", bg: "#fef2f2", bgHover: "#fde8e8", icon: ErrorIcon, label: "High" },
+  medium: { color: "#e65100", bg: "#fff8f0", bgHover: "#fff3e6", icon: WarningIcon, label: "Medium" },
+  low: { color: "#f9a825", bg: "#fffdf0", bgHover: "#fffbe6", icon: InfoIcon, label: "Low" },
+};
+
+function getSeverity(score: number) {
+  if (score >= 0.7) return SEVERITY_CONFIG.high;
+  if (score >= 0.5) return SEVERITY_CONFIG.medium;
+  return SEVERITY_CONFIG.low;
+}
+
+const PRIORITY_COLORS: Record<string, string> = {
+  high: "#c62828",
+  medium: "#e65100",
+  low: "#757575",
+};
+
+function InsightCard({ insight }: { insight: InsightData }) {
+  const [expanded, setExpanded] = useState(false);
+  const severity = getSeverity(insight.confidence.score);
+  const SeverityIcon = severity.icon;
+  const confidencePct = Math.round(insight.confidence.score * 100);
+
+  return (
+    <Card
+      sx={{
+        overflow: "hidden",
+        transition: "all 0.2s ease",
+        cursor: "pointer",
+        "&:hover": {
+          boxShadow: "0 4px 20px rgba(0,0,0,0.10)",
+          transform: "translateY(-1px)",
+        },
+      }}
+      onClick={() => setExpanded(!expanded)}
+    >
+      {/* Severity bar */}
+      <Box sx={{ height: 4, bgcolor: severity.color }} />
+
+      <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
+        {/* Header row: icon, headline, expand */}
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
+          <Box
+            sx={{
+              width: 36, height: 36, borderRadius: "10px",
+              bgcolor: severity.bg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <SeverityIcon sx={{ fontSize: 20, color: severity.color }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", lineHeight: 1.3, mb: 0.5, color: "text.primary" }}>
+              {insight.headline}
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <Typography variant="caption" color="text.secondary">
+                {new Date(insight.detected_at + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </Typography>
+              <Box sx={{ width: 3, height: 3, borderRadius: "50%", bgcolor: "text.disabled" }} />
+              <Typography variant="caption" sx={{ color: severity.color, fontWeight: 600 }}>
+                {severity.label} severity
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
+            size="small"
+            sx={{
+              transition: "transform 0.2s",
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+          >
+            <ExpandMoreIcon fontSize="small" />
+          </IconButton>
+        </Box>
+
+        {/* Signals as inline evidence chips */}
+        <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mb: expanded ? 0 : 0.5 }}>
+          {insight.signals.slice(0, 3).map((s, i) => (
+            <Chip
+              key={i}
+              icon={s.change < 0
+                ? <TrendingDownIcon sx={{ fontSize: "14px !important" }} />
+                : <TrendingUpIcon sx={{ fontSize: "14px !important" }} />
+              }
+              label={s.description}
+              size="small"
+              sx={{
+                fontSize: "0.72rem", height: 26,
+                bgcolor: s.change < 0 ? "#fef2f2" : "#f0fdf4",
+                color: s.change < 0 ? "#991b1b" : "#166534",
+                border: "1px solid",
+                borderColor: s.change < 0 ? "#fecaca" : "#bbf7d0",
+                "& .MuiChip-icon": {
+                  color: s.change < 0 ? "#dc2626" : "#16a34a",
+                },
+              }}
+            />
+          ))}
+          {insight.signals.length > 3 && (
+            <Chip
+              label={`+${insight.signals.length - 3} more`}
+              size="small"
+              variant="outlined"
+              sx={{ fontSize: "0.72rem", height: 26 }}
+            />
+          )}
+        </Box>
+
+        {/* Confidence bar */}
+        <Box sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Box sx={{ flex: 1 }}>
+            <LinearProgress
+              variant="determinate"
+              value={confidencePct}
+              sx={{
+                height: 5, borderRadius: 3,
+                bgcolor: "#f0f0f0",
+                "& .MuiLinearProgress-bar": {
+                  bgcolor: severity.color, borderRadius: 3,
+                },
+              }}
+            />
+          </Box>
+          <Typography variant="caption" sx={{ fontWeight: 600, color: severity.color, minWidth: 28 }}>
+            {confidencePct}%
+          </Typography>
+          {insight.revenue_impact.value > 0 && (
+            <>
+              <Box sx={{ width: 1, height: 14, bgcolor: "divider" }} />
+              <Typography variant="caption" sx={{ fontWeight: 600, color: "#c62828" }}>
+                {insight.revenue_impact.description}
+              </Typography>
+            </>
+          )}
+        </Box>
+
+        {/* Expanded detail */}
+        <Collapse in={expanded}>
+          <Box sx={{ mt: 2, pt: 2, borderTop: "1px solid", borderColor: "divider" }}>
+            {/* Description */}
+            <Typography variant="body2" sx={{ color: "text.secondary", lineHeight: 1.6, mb: 2 }}>
+              {insight.description}
+            </Typography>
+
+            {/* All signals if more than 3 */}
+            {insight.signals.length > 3 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  All Signals
+                </Typography>
+                <Box sx={{ mt: 0.75, display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {insight.signals.map((s, i) => (
+                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.25 }}>
+                      {s.change < 0
+                        ? <TrendingDownIcon sx={{ fontSize: 16, color: "#dc2626" }} />
+                        : <TrendingUpIcon sx={{ fontSize: 16, color: "#16a34a" }} />
+                      }
+                      <Typography variant="body2" sx={{ fontSize: "0.82rem" }}>
+                        {s.description}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            {/* Actions */}
+            {insight.actions.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Recommended Actions
+                </Typography>
+                <Box sx={{ mt: 0.75, display: "flex", flexDirection: "column", gap: 0.75 }}>
+                  {insight.actions.map((a, i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        display: "flex", alignItems: "flex-start", gap: 1.5,
+                        p: 1.25, borderRadius: 1.5,
+                        bgcolor: "#f8fafc",
+                        border: "1px solid #f0f0f0",
+                      }}
+                    >
+                      <ArrowRightIcon sx={{ fontSize: 18, mt: 0.1, color: PRIORITY_COLORS[a.priority] }} />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
+                          {a.description}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        label={a.priority}
+                        size="small"
+                        sx={{
+                          fontSize: "0.65rem", height: 20, fontWeight: 700,
+                          textTransform: "uppercase", letterSpacing: "0.03em",
+                          bgcolor: `${PRIORITY_COLORS[a.priority]}12`,
+                          color: PRIORITY_COLORS[a.priority],
+                          flexShrink: 0,
+                        }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            {/* Counterfactual / what-if */}
+            {insight.counterfactual.description && (
+              <Box
+                sx={{
+                  p: 1.5, borderRadius: 2,
+                  bgcolor: "#f0f7ff",
+                  border: "1px solid #dbeafe",
+                  display: "flex", gap: 1.5, alignItems: "flex-start",
+                }}
+              >
+                <LightbulbIcon sx={{ fontSize: 18, color: "#2563eb", mt: 0.2 }} />
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#1e40af", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    What if this is fixed?
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, fontSize: "0.82rem", color: "#1e3a5f", lineHeight: 1.5 }}>
+                    {insight.counterfactual.description}
+                    {insight.counterfactual.revenue_impact.description && (
+                      <Box component="span" sx={{ fontWeight: 600 }}>
+                        {" "}&mdash; {insight.counterfactual.revenue_impact.description}
+                      </Box>
+                    )}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        </Collapse>
+      </CardContent>
+    </Card>
   );
 }
 

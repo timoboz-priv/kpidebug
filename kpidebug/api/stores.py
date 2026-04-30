@@ -11,6 +11,8 @@ from kpidebug.metrics.metric_store import AbstractMetricStore
 from kpidebug.metrics.metric_store_postgres import PostgresMetricStore
 from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.dashboard_store_postgres import PostgresDashboardStore
+from kpidebug.analysis.insight_store import AbstractInsightStore
+from kpidebug.analysis.insight_store_postgres import PostgresInsightStore
 
 
 def _get_pool_manager() -> ConnectionPoolManager:
@@ -39,3 +41,7 @@ def get_dashboard_store() -> AbstractDashboardStore:
 
 def get_artifact_store() -> AbstractArtifactStore:
     return PostgresArtifactStore(_get_pool_manager())
+
+
+def get_insight_store() -> AbstractInsightStore:
+    return PostgresInsightStore(_get_pool_manager())

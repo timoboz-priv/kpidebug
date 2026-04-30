@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import date
 from enum import Enum
@@ -17,7 +18,8 @@ from kpidebug.analysis.templates.pricing_mismatch import PricingMismatchTemplate
 from kpidebug.analysis.templates.product_friction import ProductFrictionTemplate
 from kpidebug.analysis.templates.returning_user_drop import ReturningUserDropTemplate
 from kpidebug.analysis.templates.segment_failure import SegmentFailureTemplate
-from kpidebug.analysis.types import AnalysisResult
+from kpidebug.analysis.insight_store import AbstractInsightStore
+from kpidebug.analysis.types import AnalysisResult, AnalysisStatus
 from kpidebug.data.types import Aggregation
 from kpidebug.data.data_source_store_postgres import (
     PostgresDataSourceStore,
@@ -61,6 +63,7 @@ def process_all(
     dashboard_store: AbstractDashboardStore,
     metric_store: AbstractMetricStore,
     mode: ProcessMode = ProcessMode.FULL,
+    insight_store: AbstractInsightStore | None = None,
 ) -> None:
     total_start = time.monotonic()
     logger.info(
@@ -97,6 +100,15 @@ def process_all(
     analysis_elapsed = time.monotonic() - analysis_start
     _log_analysis_result(analysis_result, analysis_elapsed)
 
+    if insight_store and analysis_result.insights:
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        for insight in analysis_result.insights:
+            insight.detected_at = today
+        insight_store.store_insights(
+            project_id, analysis_result.insights,
+        )
+
     total_elapsed = time.monotonic() - total_start
     logger.info(
         "process_all complete in %.1fs "
@@ -112,6 +124,7 @@ def process_simulate(
     dashboard_store: AbstractDashboardStore,
     metric_store: AbstractMetricStore,
     as_of_date: date | None = None,
+    insight_store: AbstractInsightStore | None = None,
 ) -> AnalysisResult:
     total_start = time.monotonic()
     date_label = as_of_date.isoformat() if as_of_date else "today"
@@ -150,6 +163,15 @@ def process_simulate(
     )
     analysis_elapsed = time.monotonic() - analysis_start
     _log_analysis_result(analysis_result, analysis_elapsed)
+
+    if insight_store and analysis_result.insights:
+        from datetime import datetime as dt, timezone
+        sim_date = as_of_date or dt.now(timezone.utc).date()
+        for insight in analysis_result.insights:
+            insight.detected_at = sim_date
+        insight_store.store_insights(
+            project_id, analysis_result.insights,
+        )
 
     total_elapsed = time.monotonic() - total_start
     logger.info(
@@ -362,8 +384,39 @@ def _run_analysis(
         as_of_date=as_of_date,
     )
 
-    analyzer = TemplateAnalyzer(_DEFAULT_TEMPLATES)
-    return analyzer.analyze(analysis_ctx)
+    template_analyzer = TemplateAnalyzer(_DEFAULT_TEMPLATES)
+    template_result = template_analyzer.analyze(analysis_ctx)
+
+    status = AnalysisStatus.SUCCESS
+    status_message = ""
+
+    if os.environ.get("SKIP_AGENTIC_ANALYZER"):
+        all_insights = template_result.insights
+    else:
+        try:
+            from kpidebug.analysis.analyzer_agent import (
+                AgenticAnalyzer,
+            )
+            agentic_result = AgenticAnalyzer().analyze(analysis_ctx)
+            all_insights = (
+                template_result.insights + agentic_result.insights
+            )
+        except Exception as e:
+            logger.warning(
+                "Agentic analyzer failed, using template "
+                "results only",
+                exc_info=True,
+            )
+            all_insights = template_result.insights
+            status = AnalysisStatus.PARTIAL
+            status_message = f"Agentic analyzer failed: {e}"
+
+    return AnalysisResult(
+        insights=all_insights,
+        analyzed_at=template_result.analyzed_at,
+        status=status,
+        status_message=status_message,
+    )
 
 
 def _log_analysis_result(

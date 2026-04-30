@@ -5,7 +5,7 @@ from dataclasses_json import dataclass_json
 from fastapi import APIRouter, Depends, HTTPException
 
 from kpidebug.api.auth import require_project_role
-from kpidebug.api.stores import get_dashboard_store, get_data_source_store, get_metric_store
+from kpidebug.api.stores import get_dashboard_store, get_data_source_store, get_insight_store, get_metric_store
 from kpidebug.data.data_source_store_postgres import PostgresDataSourceStore
 from kpidebug.data.types import Aggregation
 from kpidebug.metrics.metric_store import AbstractMetricStore
@@ -13,6 +13,8 @@ from kpidebug.metrics.dashboard_store import AbstractDashboardStore
 from kpidebug.metrics.types import DashboardMetric
 import kpidebug.metrics.registry as registry
 from kpidebug.management.types import ProjectMember, Role
+from kpidebug.analysis.insight_store import AbstractInsightStore
+from kpidebug.analysis.types import Insight
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,99 @@ class DashboardMetricData:
 @dataclass
 class DashboardComputeResponse:
     metrics: list[DashboardMetricData] = dataclass_field(default_factory=list)
+
+
+@dataclass_json
+@dataclass
+class InsightSignalData:
+    metric_id: str = ""
+    description: str = ""
+    value: float = 0.0
+    change: float = 0.0
+    period_days: int = 0
+
+
+@dataclass_json
+@dataclass
+class InsightActionData:
+    description: str = ""
+    priority: str = "medium"
+
+
+@dataclass_json
+@dataclass
+class RevenueImpactData:
+    value: float = 0.0
+    description: str = ""
+
+
+@dataclass_json
+@dataclass
+class CounterfactualData:
+    value: float = 0.0
+    metric_id: str = ""
+    metric_name: str = ""
+    description: str = ""
+    revenue_impact: RevenueImpactData = dataclass_field(default_factory=RevenueImpactData)
+
+
+@dataclass_json
+@dataclass
+class ConfidenceData:
+    score: float = 0.0
+    description: str = ""
+
+
+@dataclass_json
+@dataclass
+class InsightData:
+    id: str = ""
+    headline: str = ""
+    description: str = ""
+    detected_at: str = ""
+    signals: list[InsightSignalData] = dataclass_field(default_factory=list)
+    actions: list[InsightActionData] = dataclass_field(default_factory=list)
+    counterfactual: CounterfactualData = dataclass_field(default_factory=CounterfactualData)
+    revenue_impact: RevenueImpactData = dataclass_field(default_factory=RevenueImpactData)
+    confidence: ConfidenceData = dataclass_field(default_factory=ConfidenceData)
+
+
+def _insight_to_data(insight: Insight) -> InsightData:
+    return InsightData(
+        id=insight.id,
+        headline=insight.headline,
+        description=insight.description,
+        detected_at=insight.detected_at.isoformat(),
+        signals=[
+            InsightSignalData(
+                metric_id=s.metric_id, description=s.description,
+                value=s.value, change=s.change, period_days=s.period_days,
+            ) for s in insight.signals
+        ],
+        actions=[
+            InsightActionData(
+                description=a.description, priority=a.priority.value,
+            ) for a in insight.actions
+        ],
+        counterfactual=CounterfactualData(
+            value=insight.counterfactual.value,
+            metric_id=insight.counterfactual.metric_id,
+            metric_name=insight.counterfactual.metric_name,
+            description=insight.counterfactual.description,
+            revenue_impact=RevenueImpactData(
+                value=insight.counterfactual.revenue_impact.value,
+                description=insight.counterfactual.revenue_impact.description,
+            ),
+        ),
+        revenue_impact=RevenueImpactData(
+            value=insight.revenue_impact.value,
+            description=insight.revenue_impact.description,
+        ),
+        confidence=ConfidenceData(
+            score=insight.confidence.score,
+            description=insight.confidence.description,
+        ),
+    )
 
 
 # --- Endpoints ---
@@ -204,3 +299,14 @@ def compute_dashboard_metrics(
         ))
 
     return DashboardComputeResponse(metrics=results)
+
+
+@router.get("/insights")
+def list_dashboard_insights(
+    project_id: str,
+    limit: int = 20,
+    _member: ProjectMember = Depends(require_project_role(Role.READ)),
+    insight_store: AbstractInsightStore = Depends(get_insight_store),
+) -> list[InsightData]:
+    insights = insight_store.list_insights(project_id, limit=limit)
+    return [_insight_to_data(i) for i in insights]

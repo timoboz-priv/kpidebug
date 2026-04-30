@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dataclass_field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 
 from dataclasses_json import dataclass_json
@@ -11,6 +11,17 @@ class Priority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+class InsightSource(str, Enum):
+    TEMPLATE = "template"
+    AGENTIC = "agentic"
+
+
+class AnalysisStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    ERROR = "error"
 
 
 @dataclass_json
@@ -59,8 +70,10 @@ class Confidence:
 @dataclass_json
 @dataclass
 class Insight:
+    id: str = ""
     headline: str = ""
     description: str = ""
+    detected_at: date = dataclass_field(default_factory=date.today)
     signals: list[Signal] = dataclass_field(default_factory=list)
     actions: list[Action] = dataclass_field(default_factory=list)
     counterfactual: Counterfactual = dataclass_field(
@@ -72,6 +85,7 @@ class Insight:
     confidence: Confidence = dataclass_field(
         default_factory=Confidence
     )
+    source: InsightSource = InsightSource.TEMPLATE
 
 
 @dataclass_json
@@ -81,3 +95,5 @@ class AnalysisResult:
     analyzed_at: datetime = dataclass_field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+    status: AnalysisStatus = AnalysisStatus.SUCCESS
+    status_message: str = ""

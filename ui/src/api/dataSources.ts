@@ -300,3 +300,59 @@ export async function processProject(
     { headers: { "X-Project-Id": projectId } },
   );
 }
+
+// --- Insights ---
+
+export interface InsightSignal {
+  metric_id: string;
+  description: string;
+  value: number;
+  change: number;
+  period_days: number;
+}
+
+export interface InsightAction {
+  description: string;
+  priority: "high" | "medium" | "low";
+}
+
+export interface RevenueImpact {
+  value: number;
+  description: string;
+}
+
+export interface InsightCounterfactual {
+  value: number;
+  metric_id: string;
+  metric_name: string;
+  description: string;
+  revenue_impact: RevenueImpact;
+}
+
+export interface InsightConfidence {
+  score: number;
+  description: string;
+}
+
+export interface InsightData {
+  id: string;
+  headline: string;
+  description: string;
+  detected_at: string;
+  signals: InsightSignal[];
+  actions: InsightAction[];
+  counterfactual: InsightCounterfactual;
+  revenue_impact: RevenueImpact;
+  confidence: InsightConfidence;
+}
+
+export async function fetchDashboardInsights(
+  projectId: string,
+  limit: number = 20,
+): Promise<InsightData[]> {
+  const response = await apiClient.get<InsightData[]>(
+    `/api/projects/${projectId}/dashboard/insights`,
+    { headers: { "X-Project-Id": projectId }, params: { limit } },
+  );
+  return response.data;
+}

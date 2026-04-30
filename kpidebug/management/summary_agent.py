@@ -1,11 +1,9 @@
-import asyncio
 import io
 
 import httpx
 from google.adk.agents import Agent
-from google.adk.runners import InMemoryRunner
-from google.genai import types as genai_types
 
+from kpidebug.common.agent import make_model, run_adk_agent
 from kpidebug.management.artifact_store import AbstractArtifactStore
 from kpidebug.management.types import ArtifactType, ProjectArtifact
 
@@ -159,41 +157,20 @@ def generate_summary(
     try:
         agent = Agent(
             name="summary_agent",
-            model="gemini-3.1-flash-lite-preview",
+            model=make_model(),
             instruction=SUMMARY_INSTRUCTION,
             description="Generates a business summary from project artifacts.",
             tools=[read_url_content, read_file_content],
         )
 
         artifact_message = _build_artifact_list_message(_artifacts)
+        result = run_adk_agent(agent, artifact_message).strip()
 
-        runner = InMemoryRunner(agent=agent, app_name="kpidebug_summary")
-        session = asyncio.run(
-            runner.session_service.create_session(
-                app_name="kpidebug_summary",
-                user_id="system",
-            )
-        )
-
-        user_content = genai_types.Content(
-            role="user",
-            parts=[genai_types.Part(text=artifact_message)],
-        )
-
-        final_text = ""
-        for event in runner.run(
-            user_id="system",
-            session_id=session.id,
-            new_message=user_content,
-        ):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text and event.author == "summary_agent":
-                        final_text = part.text
-
-        result = final_text.strip()
         if not result:
-            raise RuntimeError("The agent returned an empty summary. Check that GOOGLE_API_KEY is set.")
+            raise RuntimeError(
+                "The agent returned an empty summary. "
+                "Check that GOOGLE_API_KEY is set."
+            )
         return result
     except Exception:
         raise
